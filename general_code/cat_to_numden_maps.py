@@ -13,7 +13,12 @@ import websky as ws
 from astropy.io import fits
 
 # inputs for different options
-mode   = "peakpatch"
+#mode   = "peakpatch"
+#mode = "redmagic"
+mode = "maglim"
+#mode = "redmagic_buzz"
+#mode = "maglim_buzz"
+
 split  = False
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
@@ -48,6 +53,10 @@ if mode == "peakpatch":
     elif obj=='galaxies':
         ra, dec, z, chi, mass = ws.read_galcat(catfile, min_mass, max_mass, satfrac=.15)
     print("Catalog read.")
+    if masswgt_odmap:
+        w = mass/(10**12)
+    else:
+        w = 1
 
 elif mode == "maglim":
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
@@ -55,7 +64,15 @@ elif mode == "maglim":
     outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
     mass_str  = ''
     with fits.open(catfile) as cat:
-        ra, dec, z, mass = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z_mean'], np.zeros(len(cat[1].data))
+        ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z_mean'], cat[1].data['weight']
+elif mode == "redmagic":
+    mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
+    catfile   = "/mnt/raid-cita/mlokken/data/redmagic/redmagic_broad_chi2_isdw_subsamp_chi2_8.fits"
+    outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/200_cmpc_slices/redmagic_updated_nov2021/"
+    mass_str  = ''
+    with fits.open(catfile) as cat:
+        ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z'], cat[1].data['w']
+    
 elif mode == "maglim_buzz":
     print("Maglim Buzzard.")
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
@@ -65,7 +82,6 @@ elif mode == "maglim_buzz":
     ra   = []
     dec  = []
     z    = []
-    mass = []
     for catfile in os.listdir(catpath):
         if catfile.startswith("maglim_buzz_Ndensity"):
             print(catfile)
@@ -73,15 +89,27 @@ elif mode == "maglim_buzz":
                 ra.extend(cat[1].data['ra'])
                 dec.extend(cat[1].data['dec'])
                 z.extend(cat[1].data['DNF_ZMEAN'])
-                mass.extend(np.zeros(len(cat[1].data)))
     ra  = np.asarray(ra)
     dec = np.asarray(dec)
     z   = np.asarray(z)
-    mass = np.asarray(mass)
+    w   = 1
+
+elif mode == "redmagic_buzz":
+    print("RedMaGiC Buzzard.")
+    mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
+    catfile   = "/mnt/raid-cita/mlokken/buzzard/catalogs/buzzard_1.9.9_3y3a_rsshift_run_redmagic_highdens.fit"
+    outpath   = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/redmagic/"
+    mass_str  = ''
+    with fits.open(catfile) as cat:
+        ra, dec, z = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['zredmagic']
+    w   = 1
+
+
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
 
+    
 zsplit = False # divide by redshift bins? if false, will divide by comoving distace bins
 # Maglim zbins
 if zsplit:
@@ -89,90 +117,84 @@ if zsplit:
     #zbins = [[0.55,0.70]]
 # no-lambda test run only goes out to ~.2
 else:
-    minz  = 0.3
-    maxz  = 0.5
+    minz  = 0.1
+    maxz  = 1.25 
 nside = 4096
 
-odmap_frac = .75
-pct = str(int(odmap_frac*100))
+if split:
+    odmap_frac = .75
+    pct = str(int(odmap_frac*100))
+
+overlap = True
 
 if mask_path is not None:
     mask = hp.read_map(mask_path)
 else:
     mask = None
-if split:
-    half1     = np.zeros(len(ra),dtype=bool)
-    idx_half1 = np.random.choice(np.arange(len(half1)), size=int(len(ra)*odmap_frac), replace=False)
-    half1[idx_half1] = True
-    half2     = np.logical_not(half1)
 
-    c = 1
-    for idx in [half1, half2]:
-        if zsplit:
-            thetaphi, dists, M = csf.radec_to_thetaphi_sliced(ra[idx], dec[idx], z[idx], zbins=zbins, masses=mass[idx])
-        else:
-            thetaphi, dists, M = csf.radec_to_thetaphi_sliced(ra[idx], dec[idx], z[idx], minz, maxz, 500, masses=mass[idx]) # constant-comoving-distance method
-        nruns_local = len(thetaphi) // size
-        print(len(ra[idx])/len(ra))
-        if rank == size-1:
-            extras = len(thetaphi) % size
-        else:
-            extras = 0
+if zsplit:
+    thetaphi_list, distlist, binlist = csf.radec_to_thetaphi_sliced(ra, dec, z, zbins=zbins)
+else:
+    thetaphi_list, distlist, binlist = csf.radec_to_thetaphi_sliced(ra, dec, z, minz, maxz, 200) # constant-comoving-distance method
+    if overlap:
+        thetaphi_list_off, distlist_off, binlist_off = csf.radec_to_thetaphi_sliced(ra, dec, z, minz, maxz, 200, offset=100)
+        thetaphi_list = thetaphi_list+thetaphi_list_off
+        binlist  = binlist + binlist_off
+        distlist = distlist+distlist_off
+if type(w)!=int:
+    wlist = [w[bin] for bin in binlist]
+    
+# set the number of distance bins each core will run through
+nruns_local = len(thetaphi_list) // size
+if rank == size-1:
+    extras = len(thetaphi_list) % size
+else:
+    extras = 0
 
-        for i in range(nruns_local+extras):
-            n = i + nruns_local*rank
-            distbin = dists[n]
-            print("Getting overdensity and number density maps for bin ", distbin)
-
-            if zsplit:
-                zbin = zbins[n]
-            thetaphi_list = thetaphi[n]
-            M_inbin = M[n]
-            if c==1: # get the overdensity map which will be used for orientation
-                if masswgt_odmap:
-                    map = csf.get_od_map(nside, thetaphi_list[:,0], thetaphi_list[:,1], mask, 0, mass=M_inbin)
-                else:
-                    map = csf.get_od_map(nside, thetaphi_list[:,0], thetaphi_list[:,1], mask, 0)
-                label = 'odmap'
+# run through the distance bins
+for i in range(nruns_local+extras):
+    n = i + nruns_local*rank
+    distbin = distlist[n]
+    thetaphi = thetaphi_list[n]
+    if type(w)!=int:
+        weight = wlist[n]
+    else:
+        weight = w
+    print("Rank {:d}: Getting overdensity and number density maps for bin ".format(rank), distbin)
+    if split:
+        half1     = np.zeros(len(thetaphi),dtype=bool)
+        idx_half1 = np.random.choice(np.arange(len(half1)), size=int(len(thetaphi)*odmap_frac), replace=False)
+        half1[idx_half1] = True
+        half2     = np.logical_not(half1)
+        
+        c = 1
+        for idx in [half1, half2]:
+            thetaphi_rand = thetaphi[idx]
+            weight_rand   = weight[idx]
+            print(len(thetaphi_rand)/len(thetaphi))    
+            if c==1:
+                label    = 'odmap'
                 pctlabel = pct
-            elif c==2: # get the number density map which will be used for orientation
-                map = csf.get_nd_map(nside, thetaphi_list[:,0], thetaphi_list[:,1], mask, 0)
-                label = 'ndmap'
+            elif c==2:
+                label    = 'odmap' # can change if wanted
                 pctlabel = str(int((1-odmap_frac)*100))
             if zsplit:
+                zbin = zbins[n]
                 outfile = "{:s}_{:s}_{:s}z_{:s}_{:s}.fits".format(label, pctlabel, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'))
             else:
                 outfile = "{:s}_{:s}_{:s}{:d}_{:d}Mpc.fits".format(label, pctlabel, mass_str, distbin[0], distbin[1])
-            print("Writing map to %s" %outpath+outfile)
-            hp.write_map(outpath+outfile, map, overwrite=True)
-        c+=1
-
-else:
-    if zsplit:
-        thetaphi, dists, M = csf.radec_to_thetaphi_sliced(ra, dec, z, zbins=zbins, masses=mass)
+            if os.path.exists(os.path.join(outpath,outfile)):
+               print("Map already made. Moving on.\n")
+            else:
+                if c==1: # get the overdensity map which will be used for orientation
+                    map = csf.get_od_map(nside, thetaphi_rand[:,0], thetaphi_rand[:,1], mask, 0, wgt=weight_rand)
+                elif c==2: # get the number density map which will be used for orientation
+                    map = csf.get_od_map(nside, thetaphi_rand[:,0], thetaphi_rand[:,1], mask, 0, wgt=weight_rand)
+                print("Writing map to %s" %outpath+outfile)
+                hp.write_map(outpath+outfile, map, overwrite=True)
+            c+=1
     else:
-        thetaphi, dists, M = csf.radec_to_thetaphi_sliced(ra, dec, z, minz, maxz, 50, masses=mass) # constant-comoving-distance method
-
-    nruns_local = len(thetaphi) // size
-
-    if rank == size-1:
-        extras = len(thetaphi) % size
-    else:
-        extras = 0
-
-    for i in range(nruns_local+extras):
-        n = i + nruns_local*rank
-        distbin = dists[n]
-        if zsplit:
-            zbin = zbins[n]
-            print("Making map for z range ", zbin)
-        print("Comoving distance range: ", distbin)
-        thetaphi_list = thetaphi[n]
-        M_inbin = M[n]
-        if zsplit:
-            mid = np.average([cosmo.comoving_distance(zbin[0]).value,cosmo.comoving_distance(zbin[1]).value])*u.Mpc
-        else:
-            mid = (distbin[0]+distbin[1])/2. * u.megaparsec
+        mid = (distbin[0]+distbin[1])/2.*u.Mpc
         print("Middle of slice comoving distance ", mid)
         # get the redshift at the middle of this slice
         z_mid = z_at_value(cosmo.comoving_distance, mid)
@@ -184,17 +206,15 @@ else:
             smth_str += '_'+str(int(smth_scale_arcsec.value//60.))+'a'
         else:
             smth_scale_arcsec = 0*u.arcsec
-        if masswgt_odmap:
-            print("Weighting the overdensity map by mass.")
-            odmap = csf.get_od_map(nside, thetaphi_list[:,0], thetaphi_list[:,1], mask, smth_scale_arcsec.value, mass=M_inbin)
-        else:
-            odmap = csf.get_od_map(nside, thetaphi_list[:,0], thetaphi_list[:,1], mask, smth_scale_arcsec.value)
+        label = 'odmap'
         if zsplit:
-            outfile = "odmap_{:s}z_{:s}_{:s}{:s}.fits".format(mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'), smth_str)
+            zbin = zbins[n]
+            outfile = "{:s}_100_{:s}z_{:s}_{:s}{:s}.fits".format(label, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'), smth_str)
         else:
-            outfile = "odmap_{:s}distMpc{:d}_{:d}{:s}.fits".format(mass_str, distbin[0], distbin[1], smth_str)
-        print("Writing map to %s" %outpath+outfile)
-        hp.write_map(outpath+outfile, odmap, overwrite=False)
-
-
-        #            outfile = "odmap_distMpc_{:d}_{:d}_{:d}Mpc_{:d}arcmin.fits".format(int(distbin[0]), int(distbin[1]), int(smth_scale), int(smth_scale_arcsec.value//60.))
+            outfile = "{:s}_100_{:s}{:d}_{:d}Mpc{:s}.fits".format(label, mass_str, distbin[0], distbin[1], smth_str)
+        if os.path.exists(os.path.join(outpath,outfile)):
+               print("Map already made. Moving on.\n")
+        else:
+            odmap = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, smth_scale_arcsec.value, wgt=weight)
+            print("Writing map to %s" %outpath+outfile)
+            hp.write_map(outpath+outfile, odmap, overwrite=True)
