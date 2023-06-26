@@ -12,15 +12,11 @@ def DeclRatoThetaPhi(decl,RA):
 def ThetaPhitoRaDec(theta,phi):
     return np.rad2deg(phi), -1*(np.rad2deg(theta)-90.)
 
-def get_od_map(nside, theta, phi, mask, smth, mass=None): # smoothing scale in arcsec
+def get_od_map(nside, theta, phi, mask=None, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
     import healpy as hp
     map   = np.zeros((hp.nside2npix(nside)))
     pix = hp.ang2pix(nside,theta,phi)
-    if mass is None:
-        weight = 1.
-    else:
-        weight = mass/(10**12)
-    np.add.at(map, pix, weight)
+    np.add.at(map, pix, wgt)
     if mask is not None:
         map = map * mask
         npix = sum(mask)
@@ -33,29 +29,54 @@ def get_od_map(nside, theta, phi, mask, smth, mass=None): # smoothing scale in a
     print("Mean of number density map: ", mean)
     print("Mean of overdensity map: ", sum(newmap)/npix)
     if smth != 0:
-        smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)
+        if beam=='gaussian':
+            smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)
+        elif beam=='tophat':
+            smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
     else:
         smthmap = newmap
     return smthmap
 
-def get_nd_map(nside, theta, phi, mask, smth, mass=None): # smoothing scale in arcsec
+def get_nd_map(nside, theta, phi, mask, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
     import healpy as hp
     map   = np.zeros((hp.nside2npix(nside)))
     pix = hp.ang2pix(nside,theta,phi)
-    if mass is None:
-        weight = 1.
-    else:
-        weight = mass/(10**12)
-    np.add.at(map, pix, weight)
+    np.add.at(map, pix, wgt)
     if mask is not None:
         map = map * mask
     if smth != 0:
-        smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False)
+        if beam=='gaussian':
+            smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False)
+        elif beam=='tophat':
+            smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
     else:
         smthmap = map
     return smthmap
 
-def get_radecz(filepath, min_mass=None, max_mass=None, return_mass=False):
+def get_nu_map(nside, theta, phi, mask, smth=0, wgt=1): # smoothing scale in arcsec
+    import healpy as hp
+    map = np.zeros((hp.nside2npix(nside)))
+    pix = hp.ang2pix(nside,theta,phi)
+    np.add.at(map, pix, wgt)
+    if mask is not None:
+        map = map * mask
+        npix = sum(mask)
+    else:
+        npix = hp.nside2npix(nside)
+    mean = sum(map)/npix
+    newmap   = map/mean - 1
+    if smth != 0:
+        smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)*mask
+    else:
+        smthmap = newmap*mask
+    mean_od = sum(smthmap)/sum(mask)
+    rms     = np.sqrt(sum((smthmap-mean_od)**2*mask)/sum(mask))
+    print("rms = ", rms)
+    print("mean of smoothed overdensity map = ", mean_od)
+    nu = ((smthmap-mean_od)*mask) / rms
+    return nu
+    
+def get_radecz(filepath, min_mass=None, max_mass=None, return_mass=False, return_id=False):
     # load catalog and get ra, dec                                                                              
     if "redmapper" in filepath or "redmagic" in filepath:
         print("Redmapper or redmagic catalog entered.")
@@ -66,10 +87,16 @@ def get_radecz(filepath, min_mass=None, max_mass=None, return_mass=False):
         ra  = dat['RA']
         dec = dat['DEC']
         z   = dat['Z_LAMBDA']
+        if 'redmapper' in filepath:
+            id = dat['mem_match_id']
+        else:
+            id = dat['id']
     elif ".npy" in filepath:
         print("Peak Patch catalog entered.")
         halos = np.load(filepath)
         M     = halos[:,0]
+        id = np.arange(len(halos)) # Websky has no special ID, simply label clusters at this point
+
         if (min_mass is not None) or (max_mass is not None): # if there is either a minimum or maximum mass
             if min_mass is not None and max_mass is None:
                 include = M > min_mass
@@ -87,12 +114,14 @@ def get_radecz(filepath, min_mass=None, max_mass=None, return_mass=False):
             z   = halos[:,6]
     else:
         print("unrecognized file format")
+    to_return = [ra,dec,z]
     if return_mass:
-        return(ra,dec,z, M)
-    else:
-        return(ra,dec,z)
+        to_return.append(M)
+    if return_id:
+        to_return.append(id)
+    return to_return
 
-def get_radeczlambda(filepath, min_mass=None, return_mass=False):
+def get_radeczlambda(filepath, min_mass=None, return_mass=False, return_id=False):
     # load catalog and get ra, dec
     if "redmapper" in filepath or "redmagic" in filepath:
         hdu = fits.open(filepath)
@@ -105,7 +134,11 @@ def get_radeczlambda(filepath, min_mass=None, return_mass=False):
         if 'buzzard' in filepath:
             richness = dat['lambda']
         else:
-            richness = dat['LAMBDA_CHISQ']
+            richness = dat['lambda_chisq']
+        if 'redmapper' in filepath:
+            id = dat['mem_match_id']
+        else:
+            id = dat['id']
     elif ".npy" in filepath:
         # takes npy file with format [M,x,y,z,ra,dec,redshift]
         halos = np.load(filepath)
@@ -121,12 +154,16 @@ def get_radeczlambda(filepath, min_mass=None, return_mass=False):
             dec = halos[:,5]
             z   = halos[:,6]
         richness = mass_to_richness(M,z)
+        id = np.arange(len(halos)) # Websky has no special ID, simply label clusters at this point
     else:
         print("unrecognized file format")
+    to_return = [ra,dec,z,richness]
     if return_mass:
-        return(ra,dec,z,richness,M)
-    else:
-        return(ra,dec,z,richness)
+        to_return.append(M)
+    if return_id:
+        to_return.append(id)
+    return to_return
+    
 
 def mass_to_richness(M, z):
     # M (mass) can either be a single value or array                                                                                                
@@ -168,7 +205,7 @@ def dlist(minz=None, maxz=None, slice_width=None, offset=0, zbins=None):
             dlist.append([int(dist_slice_min.value), int(dist_slice_max.value)])
     return dlist
 
-def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=None, masses=None, min_lambda=None, max_lambda=None, richness=None, tag=None, offset=None, zbins=None):
+def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=None, min_lambda=None, max_lambda=None, richness=None, tag=None, offset=None, zbins=None):
 
 ## takes in data of ra, dec, z for objects and splits it up into slices in redshift.
 ## ra, dec, z_arr must all have same length and correspond to same objects.
@@ -184,8 +221,8 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
     if not offset:
         offset = 0.
     thetaphi_list = []
-    dlist = []
-    Mlist = []
+    dlist    = []
+    idx_list = []
     if zbins is not None:
         for z in zbins:
             # limit my sample to objects which exist in this redshift bin
@@ -194,9 +231,7 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
             ra_in    = ra[in_bin]
             dec_in   = dec[in_bin]
             z_in     = z_arr[in_bin]
-            if masses is not None:
-                M    = masses[in_bin]
-                Mlist.append(M)
+            idx_list.append(in_bin)
             print("Found %d objects in the distance slice between %.2f and %.2f.\n" %(len(ra_in), z_slice_min, z_slice_max))
             thetaphi = np.zeros((len(ra_in),2))
             theta,phi = DeclRatoThetaPhi(dec_in, ra_in)
@@ -215,12 +250,10 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
             z_slice_max    = z_at_value(cosmo.comoving_distance, dist_slice_max)
             # limit my sample to objects which exist in this redshift bin
             in_bin = np.where(np.logical_and(z_arr>z_slice_min,z_arr<z_slice_max))
+            idx_list.append(in_bin)
             ra_in  = ra[in_bin]
             dec_in   = dec[in_bin]
             z_in     = z_arr[in_bin]
-            if masses is not None:
-                M    = masses[in_bin]
-                Mlist.append(M)
             print("Found %d objects in the distance slice between %d and %d Mpc.\n" %(len(ra_in), int(dist_slice_min.value), int(dist_slice_max.value)))
             thetaphi = np.zeros((len(ra_in),2))
             theta,phi = DeclRatoThetaPhi(dec_in, ra_in)
@@ -228,10 +261,7 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
             thetaphi[:,1]=phi
             thetaphi_list.append(thetaphi)
             dlist.append([int(dist_slice_min.value), int(dist_slice_max.value)])
-    if masses is None:
-        return(thetaphi_list, dlist)
-    else:
-        return(thetaphi_list, dlist, Mlist)
+    return(thetaphi_list, dlist, idx_list)
 '''
         # make an array called save_info with [lambda, ra, dec, theta, phi] or just [ra,dec,theta,phi]
         if richness is not None:
@@ -270,3 +300,20 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
         np.savetxt(saveas_full, save_info)
         print("Theta phi file saved in %s, full info file saved in %s \n"%(saveas_tp, saveas_full))
 '''
+
+
+
+def tophat_beam(scale, lmax=8000):
+    import healpy as hp
+    import numpy as np
+    ''' takes beam size in degrees, outputs tophat beam '''
+    theta = np.linspace(0, np.deg2rad(scale))
+    beam  = np.ones(len(theta))
+    beam = hp.beam2bl(beam, theta, lmax)
+    return beam
+
+def tophat_smooth_pixell(imap, scale, lmax=30000):
+    ''' takes pixell map, tophat beam size in degrees '''
+    beam = tophat_beam(scale)
+    imap_filt = curvedsky.filter(imap, beam, lmax=lmax)
+    return imap_filt

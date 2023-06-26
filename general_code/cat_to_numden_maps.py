@@ -1,4 +1,5 @@
 # Takes theta,phi lists for clusters and galaxies, plots them, and smooths them
+
 import os
 import numpy as np
 import healpy as hp
@@ -19,10 +20,11 @@ mode = "maglim"
 #mode = "redmagic_buzz"
 #mode = "maglim_buzz"
 
-split  = False
+split  = True
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
 #45 * u.Mpc
+maptype = 'ng'
 
 if (smth_scale == 0*u.Mpc) or (smth_scale==0):
     smth_str = ''
@@ -64,6 +66,7 @@ elif mode == "maglim":
     outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
     mass_str  = ''
     with fits.open(catfile) as cat:
+        catlen = len(cat[1].data)
         ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z_mean'], cat[1].data['weight']
 elif mode == "redmagic":
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
@@ -82,6 +85,7 @@ elif mode == "maglim_buzz":
     ra   = []
     dec  = []
     z    = []
+    catlen = 0
     for catfile in os.listdir(catpath):
         if catfile.startswith("maglim_buzz_Ndensity"):
             print(catfile)
@@ -89,6 +93,7 @@ elif mode == "maglim_buzz":
                 ra.extend(cat[1].data['ra'])
                 dec.extend(cat[1].data['dec'])
                 z.extend(cat[1].data['DNF_ZMEAN'])
+                catlen+= len(cat[1].data)
     ra  = np.asarray(ra)
     dec = np.asarray(dec)
     z   = np.asarray(z)
@@ -117,8 +122,8 @@ if zsplit:
     #zbins = [[0.55,0.70]]
 # no-lambda test run only goes out to ~.2
 else:
-    minz  = 0.1
-    maxz  = 1.25 
+    minz  = 0.2
+    maxz  = 1.05 
 nside = 4096
 
 if split:
@@ -132,6 +137,24 @@ if mask_path is not None:
 else:
     mask = None
 
+
+if split:
+    from numpy.random import Generator, PCG64
+    rng = Generator(PCG64(12345)) # set the seed to be consistent every time
+    frac1     = np.zeros(len(ra),dtype=bool)
+    idx_frac1 = rng.choice(np.arange(len(ra)), size=int(len(ra)*odmap_frac), replace=False)
+    frac1[idx_frac1] = True
+    frac2     = np.logical_not(frac1)
+    ra2 = ra[frac2]
+    dec2= dec[frac2]
+    z2  = z[frac2]
+    ra = ra[frac1]
+    dec= dec[frac1]
+    z  = z[frac1]
+    if type(w)!=int:
+        w2 = w[frac2]
+        w = w[frac1]
+    print(f"Total sample has {catlen} galaxies. Split the data into sample of length {len(ra)} (fraction = {len(ra)/catlen} for orientation and sample of length {len(ra2)} (fraction = {len(ra2)/catlen}) for stacking.")
 if zsplit:
     thetaphi_list, distlist, binlist = csf.radec_to_thetaphi_sliced(ra, dec, z, zbins=zbins)
 else:
@@ -162,37 +185,21 @@ for i in range(nruns_local+extras):
         weight = w
     print("Rank {:d}: Getting overdensity and number density maps for bin ".format(rank), distbin)
     if split:
-        half1     = np.zeros(len(thetaphi),dtype=bool)
-        idx_half1 = np.random.choice(np.arange(len(half1)), size=int(len(thetaphi)*odmap_frac), replace=False)
-        half1[idx_half1] = True
-        half2     = np.logical_not(half1)
-        
-        c = 1
-        for idx in [half1, half2]:
-            thetaphi_rand = thetaphi[idx]
-            weight_rand   = weight[idx]
-            print(len(thetaphi_rand)/len(thetaphi))    
-            if c==1:
-                label    = 'odmap'
-                pctlabel = pct
-            elif c==2:
-                label    = 'odmap' # can change if wanted
-                pctlabel = str(int((1-odmap_frac)*100))
-            if zsplit:
-                zbin = zbins[n]
-                outfile = "{:s}_{:s}_{:s}z_{:s}_{:s}.fits".format(label, pctlabel, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'))
-            else:
-                outfile = "{:s}_{:s}_{:s}{:d}_{:d}Mpc.fits".format(label, pctlabel, mass_str, distbin[0], distbin[1])
-            if os.path.exists(os.path.join(outpath,outfile)):
-               print("Map already made. Moving on.\n")
-            else:
-                if c==1: # get the overdensity map which will be used for orientation
-                    map = csf.get_od_map(nside, thetaphi_rand[:,0], thetaphi_rand[:,1], mask, 0, wgt=weight_rand)
-                elif c==2: # get the number density map which will be used for orientation
-                    map = csf.get_od_map(nside, thetaphi_rand[:,0], thetaphi_rand[:,1], mask, 0, wgt=weight_rand)
-                print("Writing map to %s" %outpath+outfile)
-                hp.write_map(outpath+outfile, map, overwrite=True)
-            c+=1
+        label    = 'odmap'
+        pctlabel = pct
+        if zsplit:
+            zbin = zbins[n]
+            outfile = "{:s}_{:s}_{:s}z_{:s}_{:s}.fits".format(label, pctlabel, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'))
+        else:
+            outfile = "{:s}_{:s}_{:s}{:d}_{:d}Mpc.fits".format(label, pctlabel, mass_str, distbin[0], distbin[1])
+        if os.path.exists(os.path.join(outpath,outfile)):
+            print("Map already made. Moving on.\n")
+        else:
+            # get the overdensity map which will be used for orientation
+            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+            print("Writing map to %s" %outpath+outfile)
+            hp.write_map(outpath+outfile, map, overwrite=True)
+            
     else:
         mid = (distbin[0]+distbin[1])/2.*u.Mpc
         print("Middle of slice comoving distance ", mid)
@@ -215,6 +222,40 @@ for i in range(nruns_local+extras):
         if os.path.exists(os.path.join(outpath,outfile)):
                print("Map already made. Moving on.\n")
         else:
-            odmap = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, smth_scale_arcsec.value, wgt=weight)
+            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, smth_scale_arcsec.value, wgt=weight)
             print("Writing map to %s" %outpath+outfile)
-            hp.write_map(outpath+outfile, odmap, overwrite=True)
+            hp.write_map(outpath+outfile, map, overwrite=True)
+if split:
+    # make the maps-to-stack out of the rest
+    zbins = [[0.19985555905328484, 0.3565167560560754],[0.3565167560560754, 0.5289988643902372],[0.5289988643902372, 0.7215854982816572],
+             [0.7215854982816572, 0.9396687416637612]]
+    thetaphi_list, distlist, binlist = csf.radec_to_thetaphi_sliced(ra2, dec2, z2, zbins=zbins)
+    nruns_local2 = len(thetaphi_list) // size
+    if rank == size-1:
+        extras = len(thetaphi_list) % size
+    else:
+        extras = 0
+    
+    if type(w)!=int:
+        wlist = [w[bin] for bin in binlist]    
+    for i in range(nruns_local2+extras):
+        n = i + nruns_local2*rank
+
+        distbin = distlist[n]
+        thetaphi = thetaphi_list[n]
+        if type(w)!=int:
+            weight = wlist[n]
+        else:
+            weight = w
+        zbin = zbins[n]
+        pctlabel=str(int((1-odmap_frac)*100))
+        outfile = "{:s}map_{:s}_{:s}z_{:.2f}_{:.2f}{:s}.fits".format(maptype, pctlabel, mass_str, zbin[0], zbin[1], smth_str).replace(".","pt",2)
+        if os.path.exists(outpath+outfile):
+            print('Map already made. Moving on.')
+        else:
+            if maptype=='nd':
+                map = csf.get_nd_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+            elif maptype=='nu':
+                map = csf.get_nu_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+            print("Writing map to %s" %outpath+outfile)
+            hp.write_map(outpath+outfile, map, overwrite=True)

@@ -54,7 +54,7 @@ if rank == size - 1:
 else:
     extras = 0
 
-#find clusters within 1 degree of edge
+#find clusters within 2 degree of edge
 if size != 1:                                                                                                                                                                                        
     print("Processor %d: looping through %d objects\n" %(rank, ncl_local+extras))
 coopwidth = 2 #degrees
@@ -80,7 +80,7 @@ for i in range(ncl_local+extras):
         mean = 0.
     else:
         mean = np.mean(maski)
-    if mean<0.9:
+    if mean<0.8:
         continue
     else:
         good_rows.append(include_idx[clnum])
