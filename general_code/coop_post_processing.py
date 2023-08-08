@@ -365,7 +365,7 @@ def stack_multi_same_csize(stack_list, npks_list, d_low, slice_width, arcmin_per
                     base_shape = stack_list[l].shape
                     break
     if multiplier is None:
-        muliplier = np.full(len(stack_list), 1.)
+        multiplier = np.full(len(stack_list), 1.)
     rad_in_pix = base_shape[0]//2
     im_array = np.zeros(base_shape)
     if nstack==None:
@@ -380,8 +380,6 @@ def stack_multi_same_csize(stack_list, npks_list, d_low, slice_width, arcmin_per
         z = z_at_value(cosmo.comoving_distance, mid)
         mpc_per_arcmin = cosmo.kpc_comoving_per_arcmin(z).to(u.Mpc / u.arcmin)
         if c==0:
-            base_scale = mpc_per_arcmin
-            zoom_level = 1.
             if ((skip_list is not None) and (c not in skip_list)) or skip_list == None:
                 if ngal:
                     im_array += (ngal_convert(stack_list[c] * npks_list[c] * multiplier[c], mid.value, arcmin_per_pix))[0]
@@ -500,8 +498,6 @@ def hankel_multi_same_csize(hankel_list, npks_list, d_low, slice_width, arcmin_p
         z = z_at_value(cosmo.comoving_distance, mid)
         mpc_per_arcmin = cosmo.kpc_comoving_per_arcmin(z).to(u.Mpc / u.arcmin)
         if c==0:
-            base_scale = mpc_per_arcmin
-            zoom_level = 1.
             if ((skip_list is not None) and (c not in skip_list)) or skip_list == None:
                 for m in range(mmax):
                     if ngal:
@@ -530,7 +526,7 @@ class Stack_object:
     # Not using any Astropy Quantities in this class because they cause bugs
     def __init__(self, rad_in_Mpc, avg_img=None, avg_profiles=None, img_splits=None, profile_splits=None, Npks_splits=None):
         # Img is an array of shape (img_side_len, img_side_len)
-        # Profiles is an array of shape (m_max, img_side_len//2)
+        # avg_profiles is an array of shape (m_max, img_side_len//2)
         # Img_splits is an array of shape (N_splits, img_side_len, img_side_len)
         # Profile_splits is a list of length m_max, each element of list is array of shape (N_splits, img_side_len//2)
         # Npks_splits is an array of shape (N_splits,)
@@ -580,9 +576,9 @@ class Stack_object:
         if self.avg_img is None:
             self.avg_img = np.average(self.img_splits, axis=0, weights=self.split_wgts)
 
-        self.r = np.arange(1, self.avg_img.shape[0]//2) * rad_in_Mpc / (img_splits.shape[1]//2)  # unbinned radius variable in Mpc
+        self.r = np.arange(1, self.avg_img.shape[0]//2) * rad_in_Mpc / (self.avg_img.shape[0]//2)  # unbinned radius variable in Mpc
         # if self.r not equal to profile_splits.shape[2], print warning
-        if len(self.r) != profile_splits[0].shape[1]:
+        if len(self.r) != self.avg_profiles[0].shape[0]:
             print("Warning: r and profile_splits are different lengths.")
         # Initialize optional attributes to None
         self.covmat_full     = []
@@ -608,8 +604,10 @@ class Stack_object:
         # a list of the average binned profiles for each multipole moment m. Length m_max, each element shape (n_bins,)
         self.avg_profiles_binned = []
         for m,avgprof in enumerate(self.avg_profiles):
-            binned_prof = bin_profile(self.r, avgprof, self.rad_in_Mpc, binsize)[0]
+            binned_prof, binned_r = bin_profile(self.r, avgprof, self.rad_in_Mpc, binsize)
             self.avg_profiles_binned.append(np.asarray(binned_prof))
+        self.r_binned = np.asarray(binned_r) # set binned r as whatever the last binned r was. These should all be the same.
+
     def set_custom_bin_m_avg(self, m, custom_bins):
         # rebin the mth multipole moment of the profiles
         custom_profile_m = [np.average(self.avg_profiles[m][custom_bins[i]:custom_bins[i+1]]) for i,bin in enumerate(custom_bins[:-1])]
@@ -628,7 +626,6 @@ class Stack_object:
                 profile_splits_binned.append(np.asarray(profile_splits_binned_m))
             self.profile_splits_binned = profile_splits_binned # list with len(m_max), each element shape (n_splits, n_bins)
             # not making into array because each element may have different shape after reassignment; see set_custom_bin_m
-            self.r_binned = np.asarray(binned_r) # set binned r as whatever the last binned r was. These should all be the same.
     def set_custom_bin_m_splits(self, m, custom_bins):
         # rebin the mth multipole moment of the profiles
         if not self.__has_splits__:

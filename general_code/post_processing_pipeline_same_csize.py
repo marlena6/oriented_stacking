@@ -3,13 +3,9 @@ import error_analysis_funcs as ef
 import os
 from astropy.cosmology import Planck18 as cosmo, z_at_value
 from astropy.io import fits
-import subprocess
 import coop_post_processing as cpp
 import coop_setup_funcs as csf
 import astropy.units as u
-import matplotlib.pyplot as plt
-from scipy import ndimage
-import pandas as pd
 import pickle
 import astropy.constants as const
 import warnings
@@ -28,15 +24,11 @@ errors = True # if true, split regions to get error estimates
 mmax   = 5 # maximum multipole moment to use in the decomposition
 zsplit = False # Split by redshift bins or by bins of constant comoving distance?
 # Input here which maps to stack                                                                                                                                                                         
-stack_y        = False
+stack_y        = True
 stack_galaxies = False
-stack_kappa    = True
-
-# input number of bins (should be approx sqrt(nreg)
-nbins = 7 #sqrt(48<7 so should only do 6 bins)
-# nbins = 14
+stack_kappa    = False
+stack_mask     = False
 nu_e_cuts = True # use threshold of nu>2 and e>0.3
-
 # split if you want to only use some of the galaxy data to orient and other to stack
 split   = True
 # use overlapping bins that half-offset from each other 
@@ -106,21 +98,10 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
     if len(stack_list)>0:
         comb_stack, rad_in_Mpc   = cpp.stack_multi_same_csize(stack_list, npks_list, cl_dlow_abs, 100, arcmin_per_pix, multiplier=wgts)
         comb_prof, rad_in_Mpc    = cpp.hankel_multi_same_csize(hankel_arrays, npks_list, cl_dlow_abs, 100, arcmin_per_pix, multiplier=wgts)
-        binsize = (rad_in_Mpc / nbins).value
-        print("binning with a size of {}".format(binsize))
         r = np.arange(1,len(comb_prof[:,0]))
-        y0, binned_r0 = cpp.bin_profile(r, comb_prof[:,0][:-1], rad_in_Mpc, binsize)
-        comb_prof_binned = np.zeros((len(binned_r0),mmax))
-        comb_prof_binned[:,0] = y0
-        for m in range(1,mmax):
-            y, binned_r = cpp.bin_profile(r, comb_prof[:,m][:-1], rad_in_Mpc, binsize)
-            comb_prof_binned[:,m] = y
-        save_prof['binnedprof'] = comb_prof_binned
-        save_prof['binned_r']   = binned_r
         save_prof['npks_list']  = npks_list
         save_prof['npks']       = np.sum(npks_list)
         save_prof['prof']       = comb_prof
-        save_prof['r']          = [0]+r * (rad_in_Mpc.value/len(r)) # r times Mpc / pix
         save_prof['rad_in_Mpc'] = rad_in_Mpc
         file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:d}_{:d}Mpc".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, pct, orient_mode, dlow_abs, dhi_abs)
         savestr = mapstr+"_"+file_root
@@ -133,7 +114,7 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
     else:
         print('nothing to save for this region. Moving on.')
 
-def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, overlap=True, weight_regions=False, mmax=5, nbins=7, weights=None):
+def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, overlap=True, weight_regions=False, mmax=5, weights=None):
     # this function collects the stack information from each region, combining stacks across a given distance range
     # it may be split by region for MPI purposes
     combstack_list = []
@@ -240,19 +221,9 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
                 Cr_list.append(Cr)
                 print("Number of peaks in region {:d}: {:d}.\n".format(reg,npks_reg))
                 npks_list.append(npks_reg) # a list of the total number of clusters in each region
-                binsize = (rad_in_Mpc / nbins).value
-                y0, binned_r0 = cpp.bin_profile(r, Cr[:,0], rad_in_Mpc, binsize)
-                Cr_binned = np.zeros((len(binned_r0),mmax))
-                Cr_binned[:,0] = y0
-                #binsize = rad_in_Mpc / len(binned_r0)
-                for m in range(1,mmax):
-                    y, binned_r = cpp.bin_profile(r, Cr[:,m], rad_in_Mpc, binsize)
-                    Cr_binned[:,m] = y
-                Cr_bin_list.append(Cr_binned)
+                
         # if nothing has been found in any of these regions, skip it: only save file if there were peaks found
         if len(combstack_list) != 0:
-            save_prof['binnedprof'] = Cr_bin_list
-            save_prof['binned_r']   = binned_r
             save_prof['npks_list']  = npks_list
             save_prof['stacks']     = combstack_list
             save_prof['prof']       = Cr_list
@@ -470,4 +441,7 @@ elif errors:
                 mapstr = "{:s}_maglim_z_0pt53_0pt72".format(gmode)
             elif (nlow==18) & (nhi==22):
                 mapstr = "{:s}_maglim_z_0pt72_0pt94".format(gmode)
+            collect_regions(nreg, cl_dlist, dlist_tot,  nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
+        if stack_mask:
+            mapstr = "DES_mask"
             collect_regions(nreg, cl_dlist, dlist_tot,  nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)

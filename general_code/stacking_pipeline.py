@@ -139,6 +139,7 @@ if mode == "Websky":
     #outpath     = "/mnt/scratch-lustre/mlokken/stacking/PeakPatch_tSZ/orient_by_1pt5E12_to_1E15_msun_halos"
     outpath     = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/galaxies/orient_tests/"
 ymode       = os.path.split(ymap)[1][:-5]
+kmode       = os.path.split(kappamap)[1][:-5]
 
 if errors:
     if nu_e_cuts:
@@ -224,7 +225,7 @@ for n in range(nruns_local):
                     #    plt.show()
                     # make the ini files
             if len(pkdata_new)>0:
-                k_inifile_root = "DES_kappa_"+inifile_root+"_reg{:d}".format(reg)
+                k_inifile_root = kmode+inifile_root+"_reg{:d}".format(reg)
                 y_inifile_root = ymode + "_"+inifile_root+"_reg{:d}".format(reg)
                 m_inifile_root = "DES_mask_"+inifile_root+"_reg{:d}".format(reg)
                 if stack_galaxies:
@@ -278,7 +279,7 @@ for n in range(nruns_local):
                 end = time.time()
                 times.append(end-start)
     else:
-        k_inifile_root = "DES_kappa_"+inifile_root
+        k_inifile_root = kmode+inifile_root
         y_inifile_root = ymode+"_"+inifile_root
         start = time.time()
         if stack_galaxies:

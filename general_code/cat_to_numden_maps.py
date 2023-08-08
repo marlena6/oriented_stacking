@@ -14,30 +14,27 @@ import websky as ws
 from astropy.io import fits
 
 # inputs for different options
-#mode   = "peakpatch"
-#mode = "redmagic"
-mode = "maglim"
+# mode   = "peakpatch"
+mode = "redmagic"
+# mode = "maglim"
 #mode = "redmagic_buzz"
 #mode = "maglim_buzz"
 
-split  = True
+split = False
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
 #45 * u.Mpc
-maptype = 'ng'
+maptype = 'nd'
 
-if (smth_scale == 0*u.Mpc) or (smth_scale==0):
-    smth_str = ''
-else:
-    smth_str = '_smth_'+str(int(smth_scale.value))+'Mpc'
+
 if mode == "peakpatch":
     mask_path = None # fullsky
     # mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
-    obj = 'galaxies'
+    obj = 'halos'
     if obj=='halos':
         # catfile = "/mnt/scratch-lustre/mlokken/pkpatch/512Mpc_n256_nb14_nt2_nolambda_merge_formatted.npy"
-        catfile = "/mnt/scratch-lustre/mlokken/pkpatch/halos_fullsky_M_gt_1pt5E12.npy"
-        outpath = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/1pt5E12_to_1E15_msun/"
+        catfile = "/mnt/raid-cita/mlokken/pkpatch/halos_fullsky_M_gt_1pt5E12.npy"
+        outpath = "/mnt/raid-cita/mlokken/pkpatch/number_density_maps/fullsky/1pt5E12_to_1E15_msun/"
         # outpath = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/alt_cosmo/nolambda/"
         masswgt_odmap = True # always set to True for halos
     if obj=='galaxies':
@@ -122,6 +119,8 @@ if zsplit:
     #zbins = [[0.55,0.70]]
 # no-lambda test run only goes out to ~.2
 else:
+    # minz  = 0.4
+    # maxz  = 0.47
     minz  = 0.2
     maxz  = 1.05 
 nside = 4096
@@ -176,6 +175,10 @@ else:
 
 # run through the distance bins
 for i in range(nruns_local+extras):
+    if (smth_scale == 0*u.Mpc) or (smth_scale==0):
+        smth_str = ''
+    else:
+        smth_str = '_smth_'+str(int(smth_scale.value))+'Mpc'
     n = i + nruns_local*rank
     distbin = distlist[n]
     thetaphi = thetaphi_list[n]
