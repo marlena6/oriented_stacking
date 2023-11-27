@@ -22,7 +22,7 @@ mode = 'ACTxDES'
 
 errors = True # if true, split regions to get error estimates
 mmax   = 5 # maximum multipole moment to use in the decomposition
-zsplit = False # Split by redshift bins or by bins of constant comoving distance?
+zsplit = False # Split by redshift bins rather than by bins of constant comoving distance?
 # Input here which maps to stack                                                                                                                                                                         
 stack_y        = True
 stack_galaxies = False
@@ -31,14 +31,20 @@ stack_mask     = False
 nu_e_cuts = True # use threshold of nu>2 and e>0.3
 # split if you want to only use some of the galaxy data to orient and other to stack
 split   = True
-# use overlapping bins that half-offset from each other 
+# use overlapping bins t0 hat half-offset from each other 
 overlap = True
 # Smooth the maps by a Gaussian with this beam FWHM                                                                                                                                                       
-smth     = 20 #Mpc                                                                                                                                                                                        
-
+smth     = 20 #Mpc     
+do_hankel = True # usually set to True                                                                                                                                                                                   
+xyup = True
+orient = True # usually True
 ################################################
 ################################################
-
+if xyup:
+    style = "XYUP"
+else:
+    style = ""
+    
 def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, overlap=True, weights=None):
     stack_list    = []
     hankel_arrays = []
@@ -65,21 +71,27 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
         else:
             binstr_orient    = "{:d}_{:d}Mpc".format(dlow,dhi)
         print("{:d} to {:d} Mpc\n".format(dlow,dhi))
-        file_root = "redmapper_{:s}_{:s}_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, pct, orient_mode, binstr_orient)
+        if orient:
+            orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
+        else:
+            orientstr="randrot"
+        file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
         pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), file_root+"_pks.fits")
         stackfile = os.path.join(stkpath,"{:s}_{:s}_stk.fits".format(mapstr,file_root))
         if os.path.exists(stackfile):
             hdr, img, npks = cpp.get_img(stackfile, pksfile)
-            stack_list.append(img)
-            hankel_ms = []
-            for m in range(mmax):
-                hankelfile = os.path.join(stkpath,"{:s}_{:s}_stk_HankelTransform_m{:d}.txt".format(mapstr, file_root, m))
-                hankel = np.loadtxt(hankelfile)
-                r, Cr, Sr = hankel[:,0], hankel[:,1], hankel[:,2]
-                hankel_ms.append(Cr)
-            hankel_ms = np.asarray(hankel_ms).T
-            hankel_arrays.append(hankel_ms)
             npks_list.append(npks)
+            stack_list.append(img)
+            if do_hankel:
+                hankel_ms = []
+                for m in range(mmax):
+                    hankelfile = os.path.join(stkpath,"{:s}_{:s}_stk_HankelTransform_m{:d}.txt".format(mapstr, file_root, m))
+                    hankel = np.loadtxt(hankelfile)
+                    r, Cr, Sr = hankel[:,0], hankel[:,1], hankel[:,2]
+                    hankel_ms.append(Cr)
+                hankel_ms = np.asarray(hankel_ms).T
+                hankel_arrays.append(hankel_ms)
+                
         else:
             print("{:s} doesn't exist.".format(stackfile))
         mid = (dhi + dlow)/2. * u.Mpc
@@ -97,14 +109,20 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
         wgts = None
     if len(stack_list)>0:
         comb_stack, rad_in_Mpc   = cpp.stack_multi_same_csize(stack_list, npks_list, cl_dlow_abs, 100, arcmin_per_pix, multiplier=wgts)
-        comb_prof, rad_in_Mpc    = cpp.hankel_multi_same_csize(hankel_arrays, npks_list, cl_dlow_abs, 100, arcmin_per_pix, multiplier=wgts)
-        r = np.arange(1,len(comb_prof[:,0]))
-        save_prof['npks_list']  = npks_list
-        save_prof['npks']       = np.sum(npks_list)
-        save_prof['prof']       = comb_prof
+        if do_hankel:
+            comb_prof, rad_in_Mpc    = cpp.hankel_multi_same_csize(hankel_arrays, npks_list, cl_dlow_abs, 100, arcmin_per_pix, multiplier=wgts)
+            r = np.arange(1,len(comb_prof[:,0]))
+            save_prof['prof']   = comb_prof
         save_prof['rad_in_Mpc'] = rad_in_Mpc
-        file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:d}_{:d}Mpc".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, pct, orient_mode, dlow_abs, dhi_abs)
-        savestr = mapstr+"_"+file_root
+        save_prof['npks_list']  = npks_list
+        save_prof['stack']      = comb_stack
+        save_prof['npks']       = np.sum(npks_list)
+        if orient:
+            orientstr_save = "orient{:s}_{:d}pct_{:s}_{:d}_{:d}Mpc".format(style, pct, orient_mode, dlow_abs, dhi_abs)
+        else:
+            orientstr_save = "randrot"
+        filesave_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
+        savestr = mapstr+"_"+filesave_root
         np.savetxt(os.path.join(outpath,savestr+"_stack.txt"), comb_stack)
         save_file = open(os.path.join(outpath, "{:s}_m0to{:d}_profiles.pkl".format(savestr, mmax)), "wb")
         print(savestr)
@@ -120,7 +138,6 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
     combstack_list = []
     npks_list      = []
     Cr_list        = []
-    Cr_bin_list    = []
     if overlap:
         cl_dlow_abs = cl_dlist[nlow][0]
         cl_dhi_abs  = cl_dlist[nhi][1]
@@ -130,7 +147,11 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
         # stacks will be combined across this distance range by rescaling and stacking different thin distance bins
         
     # check if the file already exists
-    file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:d}_{:d}Mpc".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, pct, orient_mode, dlow_abs, dhi_abs)
+    if orient:
+        orientstr_save = "orient{:s}_{:d}pct_{:s}_{:d}_{:d}Mpc".format(style, pct, orient_mode, dlow_abs, dhi_abs)
+    else:
+        orientstr_save = "randrot"
+    file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
     savestr = mapstr+"_"+file_root+"_{:d}reg_{:d}_{:d}".format(nreg, rank*nruns_local, (rank+1)*nruns_local-1)
     
     if not os.path.exists((os.path.join(outpath, "temp_reg", "{:s}_m0to{:d}_profiles.pkl".format(savestr, mmax)))):
@@ -146,9 +167,14 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
             cl_dhi   = int(bincent+50)
             binstr_cl   = "{:d}_{:d}Mpc".format(cl_dlow, cl_dhi)
             binstr_orient = "{:d}_{:d}Mpc".format(dlow, dhi)
-            file_root = "redmapper_{:s}_{:s}_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, pct, orient_mode, binstr_orient)
+            if orient:
+                orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
+            else:
+                orientstr="randrot"
+            file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
             stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
             pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
+            
             if os.path.exists(stackfile):
                 hdr, img, npks = cpp.get_img(stackfile, pkfile)
                 base_shape = img.shape
@@ -179,7 +205,13 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
                 else:
                     binstr_orient    = "{:d}_{:d}Mpc".format(dlow,dhi)
                 print("{:d} to {:d} Mpc\n".format(dlow,dhi))
-                file_root = "redmapper_{:s}_{:s}_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, pct, orient_mode, binstr_orient)
+                binstr_cl   = "{:d}_{:d}Mpc".format(cl_dlow, cl_dhi)
+                
+                if orient:
+                    orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
+                else:
+                    orientstr="randrot"
+                file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
                 stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
                 pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
                 if os.path.exists(stackfile):
@@ -316,7 +348,7 @@ if mode=='Websky':
         cutmaxstr = ''
 else:
     cut = 'lambda'
-    #cutmin   = 10 # old way                                                                                                                                                                              
+    # cutmin   = 10 # old way                                                                                                                                                                              
     cutmin   = 20 # new way                                                                                                                                                                               
     cutminstr = 'gt{:d}'.format(cutmin)
     cutmaxstr = ''
@@ -328,8 +360,9 @@ standard_pk_file  = "standard_pkfile.ini"
 if mode == 'ACTxDES':
     outpath     = "/mnt/scratch-lustre/mlokken/stacking/ACTxDES_paper2/"
     orient_mode = "maglim"
-    ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_yy_4096_hpx.fits" # CIB deprojected 
-    
+    # orient_mode = "redmagic"
+    # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # add deproj_cib_ to be CIB deprojected 
+    ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.0_10.7_yy_4096_hpx.fits" # CIB deprojected
 if mode == 'Buzzard':
     outpath     = "/mnt/scratch-lustre/mlokken/stacking/Buzzard_paper2/"
     orient_mode = "maglim"
@@ -388,7 +421,7 @@ if not errors:
             consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
                         
         if stack_kappa:
-            mapstr = "DES_kappa"
+            mapstr = "kappa_bin4"
             kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/kernel_4.npy")
             z_kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/z.npy")
             cl_zlist = z_at_value(cosmo.comoving_distance, cl_dlist*u.Mpc)
@@ -422,7 +455,7 @@ elif errors:
             mapstr = ymode
             collect_regions(nreg, cl_dlist, dlist_tot,  nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
         if stack_kappa:
-            mapstr = "DES_kappa"
+            mapstr = "kappa_bin4"
             kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/kernel_4.npy")
             z_kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/z.npy")
             cl_zlist = z_at_value(cosmo.comoving_distance, cl_dlist*u.Mpc)

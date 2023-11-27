@@ -62,6 +62,35 @@ def get_img(stackfile, pkfile):
     pks.close()
     return hdr, img, npeaks
 
+def get_peakinfo(filename):
+    import error_analysis_funcs as ef
+    peakfile = fits.open(filename)
+    peakinfo = peakfile[0].data
+    rot_angle = peakinfo[:,3]
+    theta,phi = peakinfo[:,1], peakinfo[:,2]
+    parity   = peakinfo[:,5]
+    dec, ra = ef.ThetaPhitoDeclRa(theta,phi)
+    # ra = np.asarray(ra)
+    # dec = np.asarray(dec)
+    peakfile.close()
+    return (rot_angle,ra,dec, parity)
+    
+def get_vector_components(rot_angle):
+    U_arr = np.zeros(len(rot_angle))
+    V_arr = np.zeros(len(rot_angle))
+    m = 0
+    for r in rot_angle:
+
+        if (r <= np.pi/2.) or (r > 3*np.pi/2.):
+            U = 1/np.sqrt(1+np.tan(r)**2)
+        else:
+            U = -1/np.sqrt(1+np.tan(r)**2)
+        V = U * np.tan(r)
+        U_arr[m] = U
+        V_arr[m] = V
+        m += 1
+    return U_arr, V_arr
+
 def getprofs(pkl,nreg,m):
     npks_reg = pkl['npks_list']
     ys_all_regions_full = []
@@ -524,7 +553,7 @@ def hankel_multi_same_csize(hankel_list, npks_list, d_low, slice_width, arcmin_p
 class Stack_object:
     # an object to be loaded in from a file of an errors run
     # Not using any Astropy Quantities in this class because they cause bugs
-    def __init__(self, rad_in_Mpc, avg_img=None, avg_profiles=None, img_splits=None, profile_splits=None, Npks_splits=None):
+    def __init__(self, rad_in_Mpc, avg_img=None, avg_profiles=None, img_splits=None, profile_splits=None, Npks_splits=None, Npks_tot=None):
         # Img is an array of shape (img_side_len, img_side_len)
         # avg_profiles is an array of shape (m_max, img_side_len//2)
         # Img_splits is an array of shape (N_splits, img_side_len, img_side_len)
@@ -563,23 +592,29 @@ class Stack_object:
         self.profile_splits  = profile_splits # unbinned multipole profiles in splits
         self.rad_in_Mpc      = rad_in_Mpc # radius of the stack image in Mpc
         self.Npks_splits     = Npks_splits # number of peaks in each split
+        if self.Npks_splits is not None:
+            self.Npks_tot    = np.sum(self.Npks_splits)
+        else:
+            self.Npks_tot    = Npks_tot
         self.avg_profiles    = avg_profiles # list of the unbinned average profiles for each multipole moment m. Length m_max, each element shape (n_bins,)
         
         if self.__has_splits__:
             self.Nsamples = len(img_splits) # number of samples
             self.split_wgts = self.Npks_splits / np.average(self.Npks_splits)
-            self.mmax = len(profile_splits) # maximum multipole moment
-        if self.avg_profiles is None:
+            if profile_splits is not None:
+                self.mmax = len(profile_splits) # maximum multipole moment
+        if self.avg_profiles is None and self.profile_splits is not None: # if avg_profiles is not provided, calculate it from the splits
             self.avg_profiles = []
             for m,profsplits in enumerate(self.profile_splits):
                 self.avg_profiles.append(np.average(profsplits, axis=0, weights=self.split_wgts))
         if self.avg_img is None:
             self.avg_img = np.average(self.img_splits, axis=0, weights=self.split_wgts)
 
-        self.r = np.arange(1, self.avg_img.shape[0]//2) * rad_in_Mpc / (self.avg_img.shape[0]//2)  # unbinned radius variable in Mpc
+        self.r = np.arange(1, self.avg_img.shape[0]//2) * self.rad_in_Mpc / (self.avg_img.shape[0]//2)  # unbinned radius variable in Mpc
         # if self.r not equal to profile_splits.shape[2], print warning
-        if len(self.r) != self.avg_profiles[0].shape[0]:
-            print("Warning: r and profile_splits are different lengths.")
+        if self.profile_splits is not None:
+            if len(self.r) != self.avg_profiles[0].shape[0]:
+                print("Warning: r and profile_splits are different lengths.")
         # Initialize optional attributes to None
         self.covmat_full     = []
         self.cormat_full     = []
@@ -610,8 +645,10 @@ class Stack_object:
 
     def set_custom_bin_m_avg(self, m, custom_bins):
         # rebin the mth multipole moment of the profiles
+        custom_bins = np.asarray(custom_bins)
         custom_profile_m = [np.average(self.avg_profiles[m][custom_bins[i]:custom_bins[i+1]]) for i,bin in enumerate(custom_bins[:-1])]
         self.avg_profiles_binned[m] = np.asarray(custom_profile_m)
+        self.r_binned = xcenters = (custom_bins[:-1] + custom_bins[1:]) / 2 * self.rad_in_Mpc / (self.avg_img.shape[0]//2)
     def set_profile_splits_binned(self, binsize): # bin the profile of each split
         if not self.__has_splits__:
             print("No splits to bin.")
@@ -633,7 +670,7 @@ class Stack_object:
             return
         else:
             custom_profile_m = [np.average(self.profile_splits[m][:,custom_bins[i]:custom_bins[i+1]], axis=1) for i,bin in enumerate(custom_bins[:-1])]
-            self.profile_splits_binned[m] = np.asarray(custom_profile_m)
+            self.profile_splits_binned[m] = np.asarray(custom_profile_m).transpose()
     def set_covariance_full(self):
         # set the covariance matrix for the full profile
         if not self.__has_splits__:
@@ -647,6 +684,10 @@ class Stack_object:
                 self.errors_full.append(np.sqrt(np.diag(covmat)))
     def set_covariance_binned(self):
         # set the covariance matrix for the binned profile
+        # reset in case already set
+        self.covmat_binned = []
+        self.cormat_binned = []
+        self.errors_binned = []
         if not self.__has_splits__:
             print("No splits to bin.")
             return
@@ -662,3 +703,39 @@ class Stack_object:
         self.set_covariance_full()
         self.set_covariance_binned()
         
+def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=75, orient_mode='maglim', xyup=True, binsize=7.5, crop_center=2.5, scale=None, nreg=24):
+    if xyup:
+        xyupstr = '_orientXYUP'
+    else:
+        xyupstr = ''
+    
+    cl_dlow, cl_dhi = cl_dbin[0], cl_dbin[1] # extent of the clusters
+    g_dlow   = cl_dlow-50 # extent of the galaxies
+    g_dhi    = cl_dhi+50
+    zlow   = z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)
+    zhi    = z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)
+    file = path + f"{mapstr}_redmapper_lambdagt{cutmin}_combined_{cl_dlow}_{cl_dhi}Mpc_{pt_selection_str}20pt0{xyupstr}_{pct}pct_{orient_mode}_{g_dlow}_{g_dhi}Mpc_{nreg}reg_m0to5_profiles.pkl"
+    stack_info = np.load(file, allow_pickle=True)
+    # rearrange shape of profs to be compatible with Stack_object
+    profs = np.transpose(np.asarray(stack_info['prof']), axes=[2,0,1])
+    if crop_center is not None:
+        rmax = len(profs[0,0,:])
+        r_in_mpc = 40/rmax*np.arange(rmax)
+        idx_2p5 = np.where(np.abs(r_in_mpc-2.5) == np.min(np.abs(r_in_mpc-2.5)))[0][0]
+        print("2.5 index", idx_2p5)
+        # cut off profiles up to 2.5 Mpc
+        profs = profs[:,:,idx_2p5:]
+        
+    if scale is not None:
+        profs *= scale
+    stack_obj = Stack_object(img_splits=stack_info['stacks'], profile_splits=profs, Npks_splits=stack_info['npks_list'], rad_in_Mpc=40)
+    idx_r30 = np.where(np.abs(stack_obj.r-30) == np.min(np.abs(stack_obj.r-30)))[0][0]
+    if crop_center is not None:
+        # reset r of stack_obj to account for 2.5 Mpc cut
+        stack_obj.r = stack_obj.r[idx_2p5:]
+
+    for r in range(stack_obj.profile_splits.shape[1]):
+        stack_obj.profile_splits[0,r,:] -= np.average(stack_obj.profile_splits[0,r,:][idx_r30:])
+    stack_obj.set_average_profiles()
+    stack_obj.bin_and_get_stats(binsize) #Mpc
+    return stack_obj, (zlow, zhi)

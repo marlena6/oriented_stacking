@@ -3,7 +3,6 @@ import error_analysis_funcs as ef
 import os
 from astropy.cosmology import Planck18 as cosmo, z_at_value
 import astropy.units as u
-from astropy.table import Table
 import subprocess
 import coop_post_processing as cpp
 import coop_setup_funcs as csf
@@ -15,7 +14,7 @@ import pandas as pd
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, append=True)
 
-start = time.time()
+# start = time.time()
 # get the MPI ingredients
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
@@ -31,26 +30,28 @@ mode = 'ACTxDES'
 # mode = 'Websky'
 # mode = 'GRF'
 
-
-
 errors = True # if true, split regions to get error estimates
 nu_e_cuts = True
 # Input here which maps to stack
 stack_y        = True
-stack_galaxies = True
+stack_galaxies = False
 if mode=='ACTxDES':
-    stack_kappa = True
+    stack_kappa = False
 else:
     stack_kappa    = False # don't have any mock kappa maps
-stack_mask = True # stack the mask itself to test for orientation bias
+stack_mask = False # stack the mask itself to test for orientation bias
 # Smooth the maps by a Gaussian with this beam FWHM
 smth     = 20 #Mpc
 # use overlapping bins that half-offset from each other
 overlap = True
 # split if you want to only use some of the galaxy data to orient and other to stack
-split = False
+split = True
 # Split by redshift bins (True) or by bins of constant comoving distance (False)?
 zsplit = False
+
+xyup = True
+do_hankel = True # usually set to True
+orient = True # usually set to True
 ########################################################
 
 if nu_e_cuts:
@@ -71,7 +72,7 @@ if zsplit:
 else:
     width    = 200
     minz     = 0.2 # if you want to only run from the lower d limit of paper 1, input z_at_value(cosmo.comoving_distance, 1032.5*u.Mpc)
-    maxz     = 1.0
+    maxz     = 0.8
 
 smth_str = ("{:.1f}".format(smth)).replace('.','pt')
 
@@ -79,6 +80,11 @@ if split:
     pct = 75 # only use 75 percent of the galaxy data for orientation, as the other 25 percent is stacked
 else:
     pct = 100
+
+if xyup:
+    style = "XYUP"
+else:
+    style = ""
 
 # cut the clusters or halos that will be stacked by richness or mass
 if mode=='Websky':
@@ -96,21 +102,29 @@ if mode=='Websky':
         cutmaxstr = ''
 else:
     cut = 'lambda'
-    #cutmin   = 10 # old way
+    # cutmin   = 10 # old way
     cutmin   = 20 # new way
     cutminstr = 'gt{:d}'.format(cutmin)
     cutmaxstr = ''
 cutstr = '{:s}'.format(cut)+cutminstr+cutmaxstr
 
 standard_stk_file = "/home/mlokken/oriented_stacking/general_code/standard_stackfile.ini"
-standard_stk_file_errs = "/home/mlokken/oriented_stacking/general_code/standard_stackfile_errors.ini"
+standard_stk_file_errs = "/home/mlokken/oriented_stacking/general_code/standard_stackfile_errors.ini" #only difference is no hankel transform
+if not do_hankel:
+    standard_stk_file = standard_stk_file_errs
 standard_pk_file  = "/home/mlokken/oriented_stacking/general_code/standard_pkfile.ini"
 
 if mode == 'ACTxDES':
-    object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt20vl50_mask_actshr1deg_des_cutpt8.fit"
-    #ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
+    if cutmin >= 20:
+        # speed-up by only using the lambda>20 catalog
+        object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt20vl50_mask_actshr1deg_des_cutpt8.fit"
+    else: # use the full catalog
+        object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt5vl50_mask_actshr1deg_des_cutpt8.fit"
+    # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
+    # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_yy_4096_hpx.fits" # CIB deprojected
+    ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.0_10.7_yy_4096_hpx.fits" # CIB deprojected
     pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
-    ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_yy_4096_hpx.fits" # CIB deprojected
+    # pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/200_cmpc_slices/redmagic_updated_nov2021/"
     kappamap    = "/mnt/raid-cita/mlokken/data/des_general/kappa_bin4.fits"
     gmask       = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
     kappamask   = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_1024.fits"
@@ -121,13 +135,13 @@ if mode == 'ACTxDES':
     gmode       = "DES"
 if mode == 'Buzzard':
     object_path = "/mnt/raid-cita/mlokken/buzzard/catalogs/combined_actdes_mask_pt8_buzzard_1.9.9_3y3a_rsshift_run_redmapper_v0.5.1_lgt05_vl50_catalog.fit"
-    #pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/200_des_reg/" # redmagic
-    pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/maglim/"
+    # pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/200_des_reg/" # redmagic
+    # pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/maglim/"
     ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_fid_hpx.fits"
     gmask       = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
     ymask       = "/mnt/raid-cita/mlokken/buzzard/ymaps/my_buzzardy_mask.fits"
     outpath = "/mnt/scratch-lustre/mlokken/stacking/Buzzard_paper2/"
-    orient_mode = "maglim"
+    orient_mode = "redmagic"
     gmode       = "Buzzard"
 if mode == "Websky":
     object_path = "/mnt/scratch-lustre/mlokken/pkpatch/halos_fullsky_M_gt_1E13.npy"
@@ -169,7 +183,7 @@ if rank == size-1:
     extras = len(dlist_tot) % size
 else:
     extras = 0
-times = []
+# times = []
 for n in range(nruns_local):
     i = rank*nruns_local+n
     print("Rank {:d}, bin {:d}".format(rank, i+1))
@@ -186,8 +200,13 @@ for n in range(nruns_local):
         binstr_orient    = "z_{:s}_{:s}".format(zstr_low, zstr_hi)
     else:
         binstr_orient = "{:d}_{:d}Mpc".format(dlow, dhi)
+    # make the ini files
+    if orient:
+        orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
+    else:
+        orientstr="randrot"
     print("NOW PROCESSING REDSHIFT BIN", binstr_orient)
-    inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_orientXYUP_{:d}pct_{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, pct, orient_mode, binstr_orient)
+    inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
     pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), inifile_root+"_pks.fits")
     if errors:
         labels       = np.loadtxt("/home/mlokken/oriented_stacking/general_code/labels_{:d}_regions_{:s}_{:s}.txt".format(nreg,mode,cutstr))
@@ -197,7 +216,7 @@ for n in range(nruns_local):
         # labels_inbin = labels[cl_inbin]
         #cm = plt.get_cmap('gist_rainbow')\
         for reg in range(nreg):
-            start = time.time()
+            # start = time.time()
             regpath = os.path.join(stkpath,"{:d}".format(reg))
             if not os.path.exists(regpath):
                 print("Making {:s}".format(regpath))
@@ -225,7 +244,7 @@ for n in range(nruns_local):
                     #    plt.show()
                     # make the ini files
             if len(pkdata_new)>0:
-                k_inifile_root = kmode+inifile_root+"_reg{:d}".format(reg)
+                k_inifile_root = kmode+"_"+inifile_root+"_reg{:d}".format(reg)
                 y_inifile_root = ymode + "_"+inifile_root+"_reg{:d}".format(reg)
                 m_inifile_root = "DES_mask_"+inifile_root+"_reg{:d}".format(reg)
                 if stack_galaxies:
@@ -276,12 +295,12 @@ for n in range(nruns_local):
                     os.remove(os.path.join(regpath, m_inifile_root+"_stk.patch"))
                 elif stack_mask and os.path.exists(os.path.join(regpath, m_inifile_root+"_stk.fits")):
                     print("Mask already stacked. Moving on.")
-                end = time.time()
-                times.append(end-start)
+                # end = time.time()
+                # times.append(end-start)
     else:
         k_inifile_root = kmode+inifile_root
         y_inifile_root = ymode+"_"+inifile_root
-        start = time.time()
+        # start = time.time()
         if stack_galaxies:
             zbins_ndmaps = [[0.2,0.36],[0.36,0.53],[0.53,0.72],[0.72,0.94]]
             for zbin in zbins_ndmaps:
@@ -312,7 +331,7 @@ for n in range(nruns_local):
             # remove extraneous files                                                                                                                                     
             os.remove(os.path.join(stkpath, y_inifile_root+"_stk.txt"))
             os.remove(os.path.join(stkpath, y_inifile_root+"_stk.patch"))
-        end = time.time()
-        times.append(end-start)
+        # end = time.time()
+        # times.append(end-start)
 # print("Rank, time list :", rank, times)
 # print("Rank, average time per loop:", rank, np.average(times))

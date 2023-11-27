@@ -149,7 +149,7 @@ def make_ini_files(pk_mapfile, stk_mapfile, thetaphi_file, rsmooth_Mpc, standard
     fout_stk.close()
     return fout_name, fout_stk_name
 
-def make_pk_ini_file(pk_mapfile, rsmooth_Mpc, standard_pk_file, outpath, inifile_root, distbin, thetaphi_file=None, pk_mask=None, e_min=None, e_max=None, nu_min=None):
+def make_pk_ini_file(pk_mapfile, rsmooth_Mpc, standard_pk_file, outpath, inifile_root, distbin, thetaphi_file=None, pk_mask=None, e_min=None, e_max=None, nu_min=None, norot=False):
     import sys
     import astropy.units as u
     from astropy.cosmology import Planck15 as cosmo
@@ -157,8 +157,11 @@ def make_pk_ini_file(pk_mapfile, rsmooth_Mpc, standard_pk_file, outpath, inifile
     import os
     from pathlib import Path
 
-    orient_mode = 'HESSIAN'
-
+    if norot:
+        orient_mode = 'RANDOM'
+    else:
+        orient_mode = 'HESSIAN'
+    
     if thetaphi_file is not None:
         if ('thetaphi' not in thetaphi_file) or (not thetaphi_file.endswith('txt')):
             sys.exit("Wrong thetaphi file: you have inputted {:s}".format(thetaphi_file))
