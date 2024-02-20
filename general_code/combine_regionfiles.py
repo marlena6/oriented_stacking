@@ -6,8 +6,9 @@ import coop_setup_funcs as csf
 from astropy import units as u
 # mode = 'GRF'                                                                                                                                                                                            
 # mode  = 'Buzzard'
-mode = 'ACTxDES'
+# mode = 'ACTxDES'
 # mode   = 'Websky'                                                                                                                                                                                       
+mode = "Cardinal"
 
 if mode == 'ACTxDES':
     outpath     = "/mnt/scratch-lustre/mlokken/stacking/ACTxDES_paper2/"
@@ -17,6 +18,9 @@ if mode == 'Buzzard':
     orient_mode = "maglim"
 if mode == "Websky":
     outpath     = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/galaxies/orient_tests/"
+if mode == 'Cardinal':
+    outpath = "/mnt/scratch-lustre/mlokken/stacking/Cardinal_paper2/"
+    orient_mode = "maglim"
 
 path = os.path.join(outpath, "temp_reg")
 width    = 200
@@ -97,7 +101,7 @@ for nbin in nlow_hi_bins:
     print("dlow, dhi", dlow_abs, dhi_abs)
     for file in os.listdir(path):
         # check if it's a galaxy ndmap stack
-        if (f"{cl_dlow_abs}_{cl_dhi_abs}") in file and (("DES_maglim" in file) or ("Buzzard_maglim" in file)):
+        if (f"{cl_dlow_abs}_{cl_dhi_abs}") in file and (("DES_maglim" in file) or ("Buzzard_maglim" in file) or ("Cardinal_maglim" in file)):
             combining = True
             f = np.load(os.path.join(path,file), allow_pickle=True)
             for key in f.keys():

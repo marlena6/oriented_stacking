@@ -131,7 +131,7 @@ def get_radeczlambda(filepath, min_mass=None, return_mass=False, return_id=False
         ra  = dat['RA']
         dec = dat['DEC']
         z = dat['Z_LAMBDA']
-        if 'buzzard' in filepath:
+        if ('buzzard' in filepath) or ('cardinal' in filepath):
             richness = dat['lambda']
         else:
             richness = dat['lambda_chisq']
@@ -163,7 +163,50 @@ def get_radeczlambda(filepath, min_mass=None, return_mass=False, return_id=False
     if return_id:
         to_return.append(id)
     return to_return
-    
+
+def get_nu(od_filename, ra, dec, mask=None):
+    print("faster nu")
+    import healpy as hp
+    ''' returns the nu values at the positions of the input ra, dec'''
+    od_map = read_amp_map(od_filename)
+    nside  = hp.get_nside(od_map)
+    pixels = hp.ang2pix(nside, ra, dec, lonlat=True)
+    if mask is not None:
+        mean_od = np.sum(od_map*mask)/np.sum(mask)
+        rms = np.sqrt(np.sum((od_map-mean_od)**2*mask)/np.sum(mask))
+    else:
+        mean_od = np.sum(od_map)/od_map.size
+        rms = np.sqrt(np.sum((od_map-mean_od)**2)/od_map.size)
+    print("rms = ", rms)
+    print("mean of overdensity map = ", mean_od)
+    if mask is not None:
+        nu = ((od_map-mean_od)*mask) / rms
+    else:
+        nu = (od_map-mean_od)/rms
+    hp.mollview(nu)
+    return(nu[pixels])
+
+def get_x_e(e_filename, ra, dec, mask=None):
+    import healpy as hp
+    ecc_map0 = hp.read_map(e_filename, field=0)
+    ecc_map1 = hp.read_map(e_filename, field=1)    
+    ecc_map2 = hp.read_map(e_filename, field=2)
+    nside    = hp.get_nside(ecc_map0)
+    pixels   = hp.ang2pix(nside, ra, dec, lonlat=True)
+    e  = np.sqrt((ecc_map1**2 + ecc_map2**2)/(ecc_map0**2))
+    #ecc_map0 = del^2(F)
+    if mask is None:
+        mean_del2 = np.sum(ecc_map0)/ecc_map0.size
+        rms_2 = np.sqrt(np.sum((ecc_map0-mean_del2)**2)/ecc_map0.size)
+        x = ecc_map0 / rms_2
+    else:
+        mean_del2 = np.sum(ecc_map0*mask)/np.sum(mask)
+        rms_2 = np.sqrt(np.sum((ecc_map0-mean_del2)**2*mask)/np.sum(mask))
+        x = ecc_map0*mask / rms_2
+    print("mean of del^2(F) = ", mean_del2)
+    print("rms of del^2(F)  = ", rms_2)
+    print("Map of x = del^2(F)")
+    return e[pixels], x[pixels]
 
 def mass_to_richness(M, z):
     # M (mass) can either be a single value or array                                                                                                
@@ -301,7 +344,17 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
         print("Theta phi file saved in %s, full info file saved in %s \n"%(saveas_tp, saveas_full))
 '''
 
+def read_amp_map(amp_file):
+    import healpy as hp
+    ''' reads in an amplitude map and returns it '''
+    # if reading with healpy throws an error, rewrite the header to have the correct TTYPE3
+    if fits.open(amp_file)[1].header['TTYPE3'] != 'ID2':    
+        amp_map = fits.open(amp_file)
+        amp_map[1].header['TTYPE3'] = 'ID2'
+        amp_map.writeto(amp_file, overwrite=True)
+        amp_map.close()
 
+    return hp.read_map(amp_file, field=0)
 
 def tophat_beam(scale, lmax=8000):
     import healpy as hp

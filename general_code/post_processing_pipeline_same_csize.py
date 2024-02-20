@@ -16,8 +16,9 @@ warnings.filterwarnings('ignore', category=UserWarning, append=True)
 ########  USER INPUT PARAMETERS  ##############
 
 # mode = 'GRF'
-# mode  = 'Buzzard'
-mode = 'ACTxDES'
+mode  = 'Buzzard'
+# mode  = 'Cardinal'
+# mode = 'ACTxDES'
 # mode   = 'Websky'
 
 errors = True # if true, split regions to get error estimates
@@ -25,7 +26,7 @@ mmax   = 5 # maximum multipole moment to use in the decomposition
 zsplit = False # Split by redshift bins rather than by bins of constant comoving distance?
 # Input here which maps to stack                                                                                                                                                                         
 stack_y        = True
-stack_galaxies = False
+stack_galaxies = True
 stack_kappa    = False
 stack_mask     = False
 nu_e_cuts = True # use threshold of nu>2 and e>0.3
@@ -366,7 +367,12 @@ if mode == 'ACTxDES':
 if mode == 'Buzzard':
     outpath     = "/mnt/scratch-lustre/mlokken/stacking/Buzzard_paper2/"
     orient_mode = "maglim"
-    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_fid_hpx.fits"
+    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits"
+if mode == 'Cardinal':
+    outpath     = "/mnt/scratch-lustre/mlokken/stacking/Cardinal_paper2/"
+    orient_mode = "maglim"
+    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits"
+    # ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_break_bbps_car_1p6arcmin_cutoff4_alphabreak0.972_4096_hpx.fits"
 if mode == "Websky":
     outpath     = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/galaxies/orient_tests/"
 ymode       = os.path.split(ymap)[1][:-5]
@@ -434,6 +440,8 @@ if not errors:
                 gmode = "DES"
             elif mode=="Buzzard":
                 gmode = "Buzzard"
+            elif mode=="Cardinal":
+                gmode = "Cardinal"
             if (nlow==0) & (nhi==4):
                 mapstr = "{:s}_maglim_z_0pt20_0pt36".format(gmode)
             elif (nlow==6) & (nhi==10):
@@ -466,6 +474,8 @@ elif errors:
                 gmode = "DES"
             elif mode=="Buzzard":
                 gmode = "Buzzard"
+            elif mode=="Cardinal":
+                gmode = "Cardinal"
             if (nlow==0) & (nhi==4):
                 mapstr = "{:s}_maglim_z_0pt20_0pt36".format(gmode)
             elif (nlow==6) & (nhi==10):

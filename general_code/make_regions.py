@@ -6,8 +6,9 @@ import coop_setup_funcs as csf
 import healpy as hp
 
 #mode = 'Websky'
-mode = 'ACTxDES'
+# mode = 'ACTxDES'
 # mode = 'Buzzard'
+mode = 'Cardinal'
 if mode == 'Websky':
     # cut  = 'lambda'
     cut = 'mass'
@@ -15,7 +16,7 @@ else:
     cut = 'lambda'
 nreg = 24
 if cut == 'lambda':
-    cutmin = 10
+    cutmin = 20
 elif cut == 'mass':
     cutmin = 1*10**13
     cutmax = 5*10**13
@@ -27,6 +28,9 @@ if mode == 'ACTxDES':
 
 if mode == 'Buzzard': 
     object_path = "/mnt/raid-cita/mlokken/buzzard/catalogs/combined_actdes_mask_pt8_buzzard_1.9.9_3y3a_rsshift_run_redmapper_v0.5.1_lgt05_vl50_catalog.fit"
+
+if mode == 'Cardinal': 
+    object_path = "/mnt/raid-cita/mlokken/cardinal/maglim_mask_Cardinal-3Y6a_v2.0_run_run_redmapper_v0.8.1_lgt20_vl50_catalog.fit"
 
 if mode == 'Websky':
     object_path = "/mnt/scratch-lustre/mlokken/pkpatch/halos_fullsky_M_gt_1E13.npy"

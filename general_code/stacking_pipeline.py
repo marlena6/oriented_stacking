@@ -26,7 +26,8 @@ h = (cosmo.H0/100.).value
 ########################################################
 # mode is which data set, uncomment one of the following
 # mode  = 'Buzzard'
-mode = 'ACTxDES'
+mode  = 'Cardinal'
+# mode = 'ACTxDES'
 # mode = 'Websky'
 # mode = 'GRF'
 
@@ -34,9 +35,9 @@ errors = True # if true, split regions to get error estimates
 nu_e_cuts = True
 # Input here which maps to stack
 stack_y        = True
-stack_galaxies = False
+stack_galaxies = True
 if mode=='ACTxDES':
-    stack_kappa = False
+    stack_kappa = True
 else:
     stack_kappa    = False # don't have any mock kappa maps
 stack_mask = False # stack the mask itself to test for orientation bias
@@ -72,7 +73,7 @@ if zsplit:
 else:
     width    = 200
     minz     = 0.2 # if you want to only run from the lower d limit of paper 1, input z_at_value(cosmo.comoving_distance, 1032.5*u.Mpc)
-    maxz     = 0.8
+    maxz     = 1.0
 
 smth_str = ("{:.1f}".format(smth)).replace('.','pt')
 
@@ -131,18 +132,32 @@ if mode == 'ACTxDES':
     ymask       = "/mnt/raid-cita/mlokken/data/masks/outputMask_wide_mask_GAL070_apod_1.50_deg_wExtended_4096_hpx.fits"
     outpath     = "/mnt/scratch-lustre/mlokken/stacking/ACTxDES_paper2/"
     orient_mode = "maglim"
-    #outpath     = "/mnt/scratch-lustre/mlokken/stacking/D56_updated_redmagic_stacks/"
+    #outpath     = "/mnt/scratch-lustre/mlokken/stacking/D56_updated_redmasgic_stacks/"
     gmode       = "DES"
+    kmode       = os.path.split(kappamap)[1][:-5]
 if mode == 'Buzzard':
     object_path = "/mnt/raid-cita/mlokken/buzzard/catalogs/combined_actdes_mask_pt8_buzzard_1.9.9_3y3a_rsshift_run_redmapper_v0.5.1_lgt05_vl50_catalog.fit"
     # pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/200_des_reg/" # redmagic
-    # pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/maglim/"
-    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_fid_hpx.fits"
+    pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/maglim/"
+    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits"
+    # "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits"
     gmask       = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
     ymask       = "/mnt/raid-cita/mlokken/buzzard/ymaps/my_buzzardy_mask.fits"
     outpath = "/mnt/scratch-lustre/mlokken/stacking/Buzzard_paper2/"
-    orient_mode = "redmagic"
+    orient_mode = "maglim"
     gmode       = "Buzzard"
+    
+if mode == 'Cardinal':
+    object_path = "/mnt/raid-cita/mlokken/cardinal/maglim_mask_Cardinal-3Y6a_v2.0_run_run_redmapper_v0.8.1_lgt20_vl50_catalog.fit"
+    gmask       = "/mnt/raid-cita/mlokken/cardinal/cardinal_maglim_mask.fits"
+    pkmap_path  = "/mnt/raid-cita/mlokken/cardinal/number_density_maps/maglim/"
+    ymask       = "/mnt/raid-cita/mlokken/buzzard/ymaps/my_buzzardy_mask.fits"
+    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits" # standard
+    # ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_break_bbps_car_1p6arcmin_cutoff4_alphabreak0.972_4096_hpx.fits" # break
+    outpath = "/mnt/scratch-lustre/mlokken/stacking/Cardinal_paper2/"
+    orient_mode = "maglim"
+    gmode       = "Cardinal"
+    
 if mode == "Websky":
     object_path = "/mnt/scratch-lustre/mlokken/pkpatch/halos_fullsky_M_gt_1E13.npy"
     #pkmap_path  = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/1pt5E12_to_1E15_msun/"
@@ -153,7 +168,7 @@ if mode == "Websky":
     #outpath     = "/mnt/scratch-lustre/mlokken/stacking/PeakPatch_tSZ/orient_by_1pt5E12_to_1E15_msun_halos"
     outpath     = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/galaxies/orient_tests/"
 ymode       = os.path.split(ymap)[1][:-5]
-kmode       = os.path.split(kappamap)[1][:-5]
+
 
 if errors:
     if nu_e_cuts:
@@ -163,7 +178,7 @@ if errors:
     # need some info about the clusters
     if mode == 'Websky' and cut == 'mass':
         ra_cl,dec_cl,z_cl,mass_cl = csf.get_radecz(object_path, min_mass=cutmin, max_mass=cutmax, return_mass=True)
-    elif mode in ('Buzzard','ACTxDES'):
+    elif mode in ('Buzzard','ACTxDES','Cardinal'):
         ra_cl,dec_cl,z_cl,richness = csf.get_radeczlambda(object_path)
         # limit with richness
         rich_cond = richness > cutmin
@@ -244,7 +259,8 @@ for n in range(nruns_local):
                     #    plt.show()
                     # make the ini files
             if len(pkdata_new)>0:
-                k_inifile_root = kmode+"_"+inifile_root+"_reg{:d}".format(reg)
+                if stack_kappa:
+                    k_inifile_root = kmode+"_"+inifile_root+"_reg{:d}".format(reg)
                 y_inifile_root = ymode + "_"+inifile_root+"_reg{:d}".format(reg)
                 m_inifile_root = "DES_mask_"+inifile_root+"_reg{:d}".format(reg)
                 if stack_galaxies:
@@ -298,7 +314,8 @@ for n in range(nruns_local):
                 # end = time.time()
                 # times.append(end-start)
     else:
-        k_inifile_root = kmode+inifile_root
+        if stack_kappa:
+            k_inifile_root = kmode+inifile_root
         y_inifile_root = ymode+"_"+inifile_root
         # start = time.time()
         if stack_galaxies:

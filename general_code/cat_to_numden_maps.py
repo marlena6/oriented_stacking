@@ -12,15 +12,17 @@ import astropy.units as u
 import coop_setup_funcs as csf
 import websky as ws
 from astropy.io import fits
+import h5py
 
 # inputs for different options
 # mode   = "peakpatch"
-mode = "redmagic"
+# mode = "redmagic"
 # mode = "maglim"
 #mode = "redmagic_buzz"
-#mode = "maglim_buzz"
+# mode = "maglim_buzz"
+mode = "maglim_cardinal"
 
-split = False
+split = True
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
 #45 * u.Mpc
@@ -95,7 +97,19 @@ elif mode == "maglim_buzz":
     dec = np.asarray(dec)
     z   = np.asarray(z)
     w   = 1
-
+    
+elif mode == "maglim_cardinal":
+    print("Maglim Cardinal.")
+    mask_path = "/mnt/raid-cita/mlokken/cardinal/cardinal_maglim_mask.fits"
+    catfile   = "/mnt/raid-cita/mlokken/cardinal/maglim_Cardinal-3_v2.0_Y6a.hdf5"
+    outpath   = "/mnt/raid-cita/mlokken/cardinal/number_density_maps/maglim/"
+    mass_str  = ''
+    
+    with h5py.File(catfile, 'r') as cat:
+        ra, dec, z, w = cat['ra'][:], cat['dec'][:], cat['DNF_ZMEAN'][:], cat['weight'][:]
+        catlen = len(ra)
+    cat.close()
+    
 elif mode == "redmagic_buzz":
     print("RedMaGiC Buzzard.")
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"

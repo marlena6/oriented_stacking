@@ -67,13 +67,15 @@ def get_peakinfo(filename):
     peakfile = fits.open(filename)
     peakinfo = peakfile[0].data
     rot_angle = peakinfo[:,3]
+    peakid    = peakinfo[:,0]
     theta,phi = peakinfo[:,1], peakinfo[:,2]
-    parity   = peakinfo[:,5]
+    parityx   = peakinfo[:,4]
+    parityy   = peakinfo[:,5]
     dec, ra = ef.ThetaPhitoDeclRa(theta,phi)
     # ra = np.asarray(ra)
     # dec = np.asarray(dec)
     peakfile.close()
-    return (rot_angle,ra,dec, parity)
+    return (rot_angle,ra,dec, parityx, parityy, peakid)
     
 def get_vector_components(rot_angle):
     U_arr = np.zeros(len(rot_angle))
@@ -550,6 +552,79 @@ def hankel_multi_same_csize(hankel_list, npks_list, d_low, slice_width, arcmin_p
         c += 1
     return hankel_array / sum(npks_list), rad_in_mpc
 
+def integrate(profile, r, upper_bound, errors=None):
+    reimann_sum = 0
+    error_sum   = 0
+    delta_r = r[1]-r[0]
+    ub_idx = (np.abs(r - upper_bound)).argmin()
+    for i in range(ub_idx+1):    
+        reimann_sum += r[i]*profile[i]*delta_r
+        if errors is not None:
+            error_sum += (delta_r*r[i]*errors[i])**2
+    return(reimann_sum*np.pi, np.sqrt(error_sum)*np.pi)
+
+
+def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=75, orient_mode='maglim', xyup=True, binsize=7.5, crop_center=2.5, scale=None, make_delta=False, remove_r30=False, nreg=24):
+    if xyup:
+        xyupstr = '_orientXYUP'
+    else:
+        xyupstr = ''
+    
+    cl_dlow, cl_dhi = cl_dbin[0], cl_dbin[1] # extent of the clusters
+    
+    g_dlow   = cl_dlow-50 # extent of the galaxies
+    g_dhi    = cl_dhi+50
+    zlow   = z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)
+    zhi    = z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)
+    
+    file = path + f"{mapstr}_redmapper_lambdagt{cutmin}_combined_{cl_dlow}_{cl_dhi}Mpc_{pt_selection_str}20pt0{xyupstr}_{pct}pct_{orient_mode}_{g_dlow}_{g_dhi}Mpc_{nreg}reg_m0to5_profiles.pkl"
+    print(f"retrieving data from {file}")
+    stack_info = np.load(file, allow_pickle=True)
+    # rearrange shape of profs to be compatible with Stack_object
+    profs = np.transpose(np.asarray(stack_info['prof']), axes=[2,0,1])
+    if crop_center is not None:
+        rmax = len(profs[0,0,:])
+        r_in_mpc = 40/rmax*np.arange(rmax)
+        idx_crop = np.where(np.abs(r_in_mpc-crop_center) == np.min(np.abs(r_in_mpc-crop_center)))[0][0]
+        # cut off profiles up to 2.5 Mpc
+        profs = profs[:,:,idx_crop:]
+    
+    if scale is not None:
+        profs *= scale
+    stack_obj = Stack_object(img_splits=stack_info['stacks'], profile_splits=profs, Npks_splits=stack_info['npks_list'], rad_in_Mpc=40)
+    if crop_center is not None:
+        # reset r of stack_obj to account for 2.5 Mpc cut
+        stack_obj.r = stack_obj.r[idx_crop:]
+    
+    if make_delta:
+        # find the average matter density over the extent of the redshift range
+        rholist = []
+        # plt.figure(figsize=(10,10))
+        for chi in np.linspace(cl_dlow, cl_dhi,100):
+            chibinsize = (cl_dhi-cl_dlow)/100
+            zmid = z_at_value(cosmo.comoving_distance, (chi+chibinsize)/2*u.Mpc)
+            rho_avg_chi = cosmo.Om(z=zmid)* cosmo.critical_density0.to(u.Msun/u.Mpc**3)
+            # multiply it by the bin size to get the average surface mass density in the bin
+            rho_avg_bin = rho_avg_chi * chibinsize * u.Mpc
+            rholist.append(rho_avg_bin.value)
+        avg_matter = np.average(rholist)
+        print("average rho in this bin", avg_matter)
+        stack_obj.profile_splits[:,:,:] /= avg_matter
+        # convert 2D delta to 3D delta by estimating length of object along line of sight
+        est_los = 10 # Mpc
+        stack_obj.profile_splits[:,:,:] /= est_los
+    if remove_r30:
+        idx_r30 = np.where(np.abs(stack_obj.r-30) == np.min(np.abs(stack_obj.r-30)))[0][0]
+        for r in range(stack_obj.profile_splits.shape[1]):
+            avg_r30 = np.average(stack_obj.profile_splits[0,r,:][idx_r30:])
+            stack_obj.profile_splits[0,r,:] -= avg_r30
+        
+        
+    stack_obj.set_average_profiles()
+    stack_obj.bin_and_get_stats(binsize) #Mpc
+    return stack_obj, (zlow, zhi)
+
+
 class Stack_object:
     # an object to be loaded in from a file of an errors run
     # Not using any Astropy Quantities in this class because they cause bugs
@@ -703,39 +778,3 @@ class Stack_object:
         self.set_covariance_full()
         self.set_covariance_binned()
         
-def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=75, orient_mode='maglim', xyup=True, binsize=7.5, crop_center=2.5, scale=None, nreg=24):
-    if xyup:
-        xyupstr = '_orientXYUP'
-    else:
-        xyupstr = ''
-    
-    cl_dlow, cl_dhi = cl_dbin[0], cl_dbin[1] # extent of the clusters
-    g_dlow   = cl_dlow-50 # extent of the galaxies
-    g_dhi    = cl_dhi+50
-    zlow   = z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)
-    zhi    = z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)
-    file = path + f"{mapstr}_redmapper_lambdagt{cutmin}_combined_{cl_dlow}_{cl_dhi}Mpc_{pt_selection_str}20pt0{xyupstr}_{pct}pct_{orient_mode}_{g_dlow}_{g_dhi}Mpc_{nreg}reg_m0to5_profiles.pkl"
-    stack_info = np.load(file, allow_pickle=True)
-    # rearrange shape of profs to be compatible with Stack_object
-    profs = np.transpose(np.asarray(stack_info['prof']), axes=[2,0,1])
-    if crop_center is not None:
-        rmax = len(profs[0,0,:])
-        r_in_mpc = 40/rmax*np.arange(rmax)
-        idx_2p5 = np.where(np.abs(r_in_mpc-2.5) == np.min(np.abs(r_in_mpc-2.5)))[0][0]
-        print("2.5 index", idx_2p5)
-        # cut off profiles up to 2.5 Mpc
-        profs = profs[:,:,idx_2p5:]
-        
-    if scale is not None:
-        profs *= scale
-    stack_obj = Stack_object(img_splits=stack_info['stacks'], profile_splits=profs, Npks_splits=stack_info['npks_list'], rad_in_Mpc=40)
-    idx_r30 = np.where(np.abs(stack_obj.r-30) == np.min(np.abs(stack_obj.r-30)))[0][0]
-    if crop_center is not None:
-        # reset r of stack_obj to account for 2.5 Mpc cut
-        stack_obj.r = stack_obj.r[idx_2p5:]
-
-    for r in range(stack_obj.profile_splits.shape[1]):
-        stack_obj.profile_splits[0,r,:] -= np.average(stack_obj.profile_splits[0,r,:][idx_r30:])
-    stack_obj.set_average_profiles()
-    stack_obj.bin_and_get_stats(binsize) #Mpc
-    return stack_obj, (zlow, zhi)
