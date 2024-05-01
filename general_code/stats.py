@@ -38,14 +38,16 @@ def snr_from_pte(data_vector, null_vector, covmat, chisq_data=None, nsamples=10*
     if chisq_data is None:
         chisq_data = chisq(data_vector, null_vector, covmat)
     sim = np.random.multivariate_normal(null_vector, covmat, size=nsamples)
+    chi2null_list = []
     for i in range(nsamples):
         chisq_null = chisq(sim[i], null_vector, covmat)
         if chisq_null > chisq_data:
             exceeds[i] = 1
+        chi2null_list.append(chisq_null)
     print("Number exceeding: ", len(np.where(exceeds == 1)[0]))
     pte = len(np.where(exceeds == 1)[0])/(float(nsamples))
     snr = np.sqrt(2.) * sp.special.erfinv(1.-pte)
-    return(pte,snr)
+    return(pte,snr, chi2null_list)
 
 
 def KStest_raderrs(vals,err,mean, twosamp=False):

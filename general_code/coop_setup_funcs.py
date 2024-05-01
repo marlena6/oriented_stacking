@@ -12,46 +12,137 @@ def DeclRatoThetaPhi(decl,RA):
 def ThetaPhitoRaDec(theta,phi):
     return np.rad2deg(phi), -1*(np.rad2deg(theta)-90.)
 
-def get_od_map(nside, theta, phi, mask=None, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
+# def get_od_map(nside, theta, phi, mask=None, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
+#     import healpy as hp
+#     map   = np.zeros((hp.nside2npix(nside)))
+#     pix = hp.ang2pix(nside,theta,phi)
+#     np.add.at(map, pix, wgt)
+#     if mask is not None:
+#         map = map * mask
+#         npix = sum(mask)
+#     else:
+#         npix = hp.nside2npix(nside)
+#     mean = sum(map)/npix
+#     newmap   = map/mean - 1
+#     if mask is not None:
+#         newmap = newmap * mask
+#     print("Mean of number density map: ", mean)
+#     print("Mean of overdensity map: ", sum(newmap)/npix)
+#     if smth != 0:
+#         if beam=='gaussian':
+#             smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)
+#         elif beam=='tophat':
+#             smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
+#     else:
+#         smthmap = newmap
+#     return smthmap
+
+def get_od_map(nside, theta, phi, binmask=None, fracmask=None, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
+    '''
+    Get a number density map from a set of coordinates and weights
+    Parameters:
+    nside: int
+        Healpix nside parameter
+    theta: float array
+        Declination in radians
+    phi: float array
+        Right ascension in radians
+    binmask: float array
+        Array of values to mask the map with (must be binary)
+    fracmask: float array
+        Array of values to correct the map for survey incompleteness
+    smth: float
+        Smoothing scale in arcseconds
+    wgt: float array
+        Array of weights for each coordinate
+    beam: string
+        Beam type for smoothing. Options are 'gaussian' or 'tophat'
+    Returns:
+    map: float array
+        Number density map (smoothed or unsmoothed)
+    '''
     import healpy as hp
     map   = np.zeros((hp.nside2npix(nside)))
     pix = hp.ang2pix(nside,theta,phi)
     np.add.at(map, pix, wgt)
-    if mask is not None:
-        map = map * mask
-        npix = sum(mask)
+    if fracmask is not None:
+        map[fracmask>0] = map[fracmask>0]/fracmask[fracmask>0] # correct for survey incompleteness
+    if binmask is not None:
+        map = map * binmask
+        npix = sum(binmask)
     else:
         npix = hp.nside2npix(nside)
     mean = sum(map)/npix
     newmap   = map/mean - 1
-    if mask is not None:
-        newmap = newmap * mask
+    if binmask is not None:
+        newmap = newmap * binmask
     print("Mean of number density map: ", mean)
     print("Mean of overdensity map: ", sum(newmap)/npix)
     if smth != 0:
         if beam=='gaussian':
-            smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)
+            newmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False)
         elif beam=='tophat':
-            smthmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
-    else:
-        smthmap = newmap
-    return smthmap
+            newmap = hp.sphtfunc.smoothing(newmap, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
+        if binmask is not None:
+            newmap = newmap * binmask # ensure no values where sky was totally unobserved
+    return newmap
 
-def get_nd_map(nside, theta, phi, mask, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
+# def get_nd_map(nside, theta, phi, mask, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
+#     import healpy as hp
+#     map   = np.zeros((hp.nside2npix(nside)))
+#     pix = hp.ang2pix(nside,theta,phi)
+#     np.add.at(map, pix, wgt)
+#     if mask is not None:
+#         map = map * mask
+#     if smth != 0:
+#         if beam=='gaussian':
+#             smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False)
+#         elif beam=='tophat':
+#             smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
+#     else:
+#         smthmap = map
+#     return smthmap
+
+def get_nd_map(nside, theta, phi, binmask=None, fracmask=None, smth=0, wgt=1, beam='gaussian'):
+    '''
+    Get a number density map from a set of coordinates and weights
+    Parameters:
+    nside: int
+        Healpix nside parameter
+    theta: float array
+        Declination in radians
+    phi: float array
+        Right ascension in radians
+    binmask: float array
+        Array of values to mask the map with (must be binary)
+    fracmask: float array
+        Array of values to correct the map for survey incompleteness
+    smth: float
+        Smoothing scale in arcseconds
+    wgt: float array
+        Array of weights for each coordinate
+    beam: string
+        Beam type for smoothing. Options are 'gaussian' or 'tophat'
+    Returns:
+    map: float array
+        Number density map (smoothed or unsmoothed)
+    '''
     import healpy as hp
     map   = np.zeros((hp.nside2npix(nside)))
     pix = hp.ang2pix(nside,theta,phi)
     np.add.at(map, pix, wgt)
-    if mask is not None:
-        map = map * mask
+    if fracmask is not None:
+        map[fracmask>0] = map[fracmask>0]/fracmask[fracmask>0] # correct for survey incompleteness
+    if binmask is not None:
+        map = map * binmask # ensure no values where sky was totally unobserved
     if smth != 0:
         if beam=='gaussian':
-            smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False)
+            map = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False)
         elif beam=='tophat':
-            smthmap = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
-    else:
-        smthmap = map
-    return smthmap
+            map = hp.sphtfunc.smoothing(map, fwhm = np.deg2rad(smth/3600.), pol=False, beam_window=tophat_beam(smth/3600.))
+        if binmask is not None:
+            map = map * binmask # ensure no values where sky was totally unobserved
+    return map
 
 def get_nu_map(nside, theta, phi, mask, smth=0, wgt=1): # smoothing scale in arcsec
     import healpy as hp

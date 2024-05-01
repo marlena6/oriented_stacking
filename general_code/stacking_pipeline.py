@@ -26,18 +26,18 @@ h = (cosmo.H0/100.).value
 ########################################################
 # mode is which data set, uncomment one of the following
 # mode  = 'Buzzard'
-mode  = 'Cardinal'
-# mode = 'ACTxDES'
+# mode  = 'Cardinal'
+mode = 'ACTxDES'
 # mode = 'Websky'
 # mode = 'GRF'
 
 errors = True # if true, split regions to get error estimates
 nu_e_cuts = True
 # Input here which maps to stack
-stack_y        = True
+stack_y        = False
 stack_galaxies = True
 if mode=='ACTxDES':
-    stack_kappa = True
+    stack_kappa = False
 else:
     stack_kappa    = False # don't have any mock kappa maps
 stack_mask = False # stack the mask itself to test for orientation bias
@@ -123,7 +123,8 @@ if mode == 'ACTxDES':
         object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt5vl50_mask_actshr1deg_des_cutpt8.fit"
     # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
     # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_yy_4096_hpx.fits" # CIB deprojected
-    ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.0_10.7_yy_4096_hpx.fits" # CIB deprojected
+    ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.4_10.7_yy_4096_hpx.fits" # CIB deprojected
+    # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.2_24.0_yy_4096_hpx.fits"
     pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
     # pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/200_cmpc_slices/redmagic_updated_nov2021/"
     kappamap    = "/mnt/raid-cita/mlokken/data/des_general/kappa_bin4.fits"
@@ -221,7 +222,7 @@ for n in range(nruns_local):
     else:
         orientstr="randrot"
     print("NOW PROCESSING REDSHIFT BIN", binstr_orient)
-    inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+    inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
     pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), inifile_root+"_pks.fits")
     if errors:
         labels       = np.loadtxt("/home/mlokken/oriented_stacking/general_code/labels_{:d}_regions_{:s}_{:s}.txt".format(nreg,mode,cutstr))
@@ -269,7 +270,7 @@ for n in range(nruns_local):
                         if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>=zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
                             zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
                             zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
-                            map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}.fits".format(zlow_str, zhi_str)
+                            map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}_cc.fits".format(zlow_str, zhi_str)
                             g_inifile_root = "{:s}_maglim_z_{:s}_{:s}_".format(gmode, zlow_str,zhi_str)+inifile_root+"_reg{:d}".format(reg)
                             slice_included = True
                     if slice_included:
@@ -325,7 +326,7 @@ for n in range(nruns_local):
                 if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
                     zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
                     zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
-                    map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}.fits".format(zlow_str, zhi_str)
+                    map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}_cc.fits".format(zlow_str, zhi_str)
                     g_inifile_root = "{:s}_maglim_z_{:s}_{:s}_".format(gmode,zlow_str,zhi_str)+inifile_root
             if not os.path.exists(os.path.join(stkpath, g_inifile_root+"_stk_HankelTransform_m0.txt")):
                 gstk_ini = ef.make_stk_ini_file(pksfile, map_to_stack, standard_stk_file, stkpath, g_inifile_root,[dlow,dhi], stk_mask=gmask, rad_Mpc=40)

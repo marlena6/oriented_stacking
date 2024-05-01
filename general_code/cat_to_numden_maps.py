@@ -26,7 +26,7 @@ split = True
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
 #45 * u.Mpc
-maptype = 'nd'
+
 
 
 if mode == "peakpatch":
@@ -61,6 +61,7 @@ if mode == "peakpatch":
 
 elif mode == "maglim":
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
+    fracmask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_fracgood_hpx_4096.fits"
     catfile   = "/mnt/raid-cita/mlokken/data/maglim/maglim_data_wflux_wmag.fits"
     outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
     mass_str  = ''
@@ -77,9 +78,11 @@ elif mode == "redmagic":
     
 elif mode == "maglim_buzz":
     print("Maglim Buzzard.")
-    mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
+    mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits" # binary
+    fracmask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_fracgood_hpx_4096.fits"
     catpath   = "/mnt/raid-cita/mlokken/buzzard/catalogs/"
     outpath   = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/maglim/"
+    
     mass_str  = ''
     ra   = []
     dec  = []
@@ -101,6 +104,7 @@ elif mode == "maglim_buzz":
 elif mode == "maglim_cardinal":
     print("Maglim Cardinal.")
     mask_path = "/mnt/raid-cita/mlokken/cardinal/cardinal_maglim_mask.fits"
+    fracmask_path = "/mnt/raid-cita/mlokken/cardinal/fracgood_band_i_nside_4096.hp"
     catfile   = "/mnt/raid-cita/mlokken/cardinal/maglim_Cardinal-3_v2.0_Y6a.hdf5"
     outpath   = "/mnt/raid-cita/mlokken/cardinal/number_density_maps/maglim/"
     mass_str  = ''
@@ -149,6 +153,8 @@ if mask_path is not None:
     mask = hp.read_map(mask_path)
 else:
     mask = None
+if fracmask_path is not None:
+    fra = hp.read_map(fracmask_path)
 
 
 if split:
@@ -206,14 +212,14 @@ for i in range(nruns_local+extras):
         pctlabel = pct
         if zsplit:
             zbin = zbins[n]
-            outfile = "{:s}_{:s}_{:s}z_{:s}_{:s}.fits".format(label, pctlabel, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'))
+            outfile = "{:s}_{:s}_{:s}z_{:s}_{:s}_cc.fits".format(label, pctlabel, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'))
         else:
-            outfile = "{:s}_{:s}_{:s}{:d}_{:d}Mpc.fits".format(label, pctlabel, mass_str, distbin[0], distbin[1])
+            outfile = "{:s}_{:s}_{:s}{:d}_{:d}Mpc_cc.fits".format(label, pctlabel, mass_str, distbin[0], distbin[1])
         if os.path.exists(os.path.join(outpath,outfile)):
             print("Map already made. Moving on.\n")
         else:
             # get the overdensity map which will be used for orientation
-            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], binmask=mask,fracmask=fra, smth=0, wgt=weight)
             print("Writing map to %s" %outpath+outfile)
             hp.write_map(outpath+outfile, map, overwrite=True)
             
@@ -233,16 +239,17 @@ for i in range(nruns_local+extras):
         label = 'odmap'
         if zsplit:
             zbin = zbins[n]
-            outfile = "{:s}_100_{:s}z_{:s}_{:s}{:s}.fits".format(label, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'), smth_str)
+            outfile = "{:s}_100_{:s}z_{:s}_{:s}{:s}_cc.fits".format(label, mass_str, str(zbin[0]).replace('.','pt'), str(zbin[1]).replace('.','pt'), smth_str)
         else:
-            outfile = "{:s}_100_{:s}{:d}_{:d}Mpc{:s}.fits".format(label, mass_str, distbin[0], distbin[1], smth_str)
+            outfile = "{:s}_100_{:s}{:d}_{:d}Mpc{:s}_cc.fits".format(label, mass_str, distbin[0], distbin[1], smth_str)
         if os.path.exists(os.path.join(outpath,outfile)):
                print("Map already made. Moving on.\n")
         else:
-            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1], mask, smth_scale_arcsec.value, wgt=weight)
+            map = csf.get_od_map(nside, thetaphi[:,0], thetaphi[:,1],  binmask=mask,fracmask=fra, smth=smth_scale_arcsec.value, wgt=weight)
             print("Writing map to %s" %outpath+outfile)
             hp.write_map(outpath+outfile, map, overwrite=True)
 if split:
+    maptype = 'nd' # maptype for the second map to stack
     # make the maps-to-stack out of the rest
     zbins = [[0.19985555905328484, 0.3565167560560754],[0.3565167560560754, 0.5289988643902372],[0.5289988643902372, 0.7215854982816572],
              [0.7215854982816572, 0.9396687416637612]]
@@ -266,13 +273,15 @@ if split:
             weight = w
         zbin = zbins[n]
         pctlabel=str(int((1-odmap_frac)*100))
-        outfile = "{:s}map_{:s}_{:s}z_{:.2f}_{:.2f}{:s}.fits".format(maptype, pctlabel, mass_str, zbin[0], zbin[1], smth_str).replace(".","pt",2)
+        outfile = "{:s}map_{:s}_{:s}z_{:.2f}_{:.2f}{:s}_cc.fits".format(maptype, pctlabel, mass_str, zbin[0], zbin[1], smth_str).replace(".","pt",2)
         if os.path.exists(outpath+outfile):
             print('Map already made. Moving on.')
         else:
             if maptype=='nd':
-                map = csf.get_nd_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+                map = csf.get_nd_map(nside, thetaphi[:,0], thetaphi[:,1],  binmask=mask,fracmask=fra, smth=0, wgt=weight)
             elif maptype=='nu':
-                map = csf.get_nu_map(nside, thetaphi[:,0], thetaphi[:,1], mask, 0, wgt=weight)
+                map = csf.get_nu_map(nside, thetaphi[:,0], thetaphi[:,1], binmask=mask,fracmask=fra, smth=0, wgt=weight)
+            else:
+                sys.exit("map must be either nd or nu.  Exiting.")
             print("Writing map to %s" %outpath+outfile)
             hp.write_map(outpath+outfile, map, overwrite=True)

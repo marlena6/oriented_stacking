@@ -16,16 +16,16 @@ warnings.filterwarnings('ignore', category=UserWarning, append=True)
 ########  USER INPUT PARAMETERS  ##############
 
 # mode = 'GRF'
-mode  = 'Buzzard'
+# mode  = 'Buzzard'
 # mode  = 'Cardinal'
-# mode = 'ACTxDES'
+mode = 'ACTxDES'
 # mode   = 'Websky'
 
 errors = True # if true, split regions to get error estimates
 mmax   = 5 # maximum multipole moment to use in the decomposition
 zsplit = False # Split by redshift bins rather than by bins of constant comoving distance?
 # Input here which maps to stack                                                                                                                                                                         
-stack_y        = True
+stack_y        = False
 stack_galaxies = True
 stack_kappa    = False
 stack_mask     = False
@@ -39,6 +39,8 @@ smth     = 20 #Mpc
 do_hankel = True # usually set to True                                                                                                                                                                                   
 xyup = True
 orient = True # usually True
+if stack_kappa:
+    as_delta = False # usually False
 ################################################
 ################################################
 if xyup:
@@ -76,7 +78,7 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
             orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
         else:
             orientstr="randrot"
-        file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+        file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
         pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), file_root+"_pks.fits")
         stackfile = os.path.join(stkpath,"{:s}_{:s}_stk.fits".format(mapstr,file_root))
         if os.path.exists(stackfile):
@@ -152,7 +154,7 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
         orientstr_save = "orient{:s}_{:d}pct_{:s}_{:d}_{:d}Mpc".format(style, pct, orient_mode, dlow_abs, dhi_abs)
     else:
         orientstr_save = "randrot"
-    file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
+    file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}_cc".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
     savestr = mapstr+"_"+file_root+"_{:d}reg_{:d}_{:d}".format(nreg, rank*nruns_local, (rank+1)*nruns_local-1)
     
     if not os.path.exists((os.path.join(outpath, "temp_reg", "{:s}_m0to{:d}_profiles.pkl".format(savestr, mmax)))):
@@ -172,7 +174,7 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
                 orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
             else:
                 orientstr="randrot"
-            file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+            file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
             stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
             pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
             
@@ -212,7 +214,7 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
                     orientstr="orient{:s}_{:d}pct_{:s}_{:s}".format(style, pct, orient_mode, binstr_orient)
                 else:
                     orientstr="randrot"
-                file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+                file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
                 stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
                 pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
                 if os.path.exists(stackfile):
@@ -270,22 +272,33 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
     else:
         print("Already done. moving on.")
         
-def get_lensing_weights(cl_zlist, z_kernel, kernel):
+def get_lensing_weights(cl_zlist, z_kernel, kernel, as_delta=False):
         # get the weights for the lensing kernel
         # cl_zlist is the list of redshifts of the clusters
         # z_kernel is the list of redshifts of the kernel
         # kernel is the kernel itself
-    weights = []
-    for zbin in cl_zlist:
+    weights = np.zeros(len(cl_zlist))
+    rho_avgs = np.zeros(len(cl_zlist))
+    for i,zbin in enumerate(cl_zlist):
         # find weight at the center of the redshift bin
-        # fix this later, this is the mean
-        weights.append(1/np.mean(kernel[np.where((z_kernel<zbin[1]) & (z_kernel>zbin[0]))]))
+        # fix this later? this is the mean
+        weights[i]=1/np.mean(kernel[np.where((z_kernel<zbin[1]) & (z_kernel>zbin[0]))])
+        rho_avg  = cosmo.Om(z=np.mean(zbin))* cosmo.critical_density0.to(u.Msun/u.Mpc**3)
+        rhou     = rho_avg.unit
+        rho_avgs[i]=rho_avg.value
+    weights = u.Quantity(np.asarray(weights))
+    rho_avgs = u.Quantity(np.asarray(rho_avgs))*rhou
     weights = u.Quantity(np.asarray(weights))
     a_cl = [1/(1+np.mean(zbin)) for zbin in cl_zlist]
     chi_cl = [cosmo.comoving_distance(np.mean(zbin)).value for zbin in cl_zlist]
     weights *= (1/np.asarray(a_cl)  * 1/(np.asarray(chi_cl)*u.Mpc) * 2*const.c**2/(8*np.pi *const.G))# units of surface mass densit
-    print(weights[0]) # print units of weights
-    return weights.to(u.Msun/u.Mpc**2).value
+    if as_delta:
+        weights /= rho_avgs
+    print(weights.unit, "lensing weight unit")
+    if as_delta:
+        return weights.to(u.Mpc).value
+    else:
+        return weights.to(u.Msun/u.Mpc**2).value
 
 if errors:
     if nu_e_cuts:
@@ -427,12 +440,14 @@ if not errors:
             consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
                         
         if stack_kappa:
-            mapstr = "kappa_bin4"
+            if as_delta:
+                mapstr = "kapp_bin4_asdelta"
+            else:
+                mapstr = "kappa_bin4"
             kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/kernel_4.npy")
             z_kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/z.npy")
             cl_zlist = z_at_value(cosmo.comoving_distance, cl_dlist*u.Mpc)
-            weights = get_lensing_weights(cl_zlist, z_kernel, kernel)
-            
+            weights = get_lensing_weights(cl_zlist, z_kernel, kernel, as_delta=as_delta)
             consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, weights=weights)
 
         if stack_galaxies:
@@ -467,7 +482,7 @@ elif errors:
             kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/kernel_4.npy")
             z_kernel = np.load("/home/mlokken/oriented_stacking/lensing_only_code/z.npy")
             cl_zlist = z_at_value(cosmo.comoving_distance, cl_dlist*u.Mpc)
-            weights = get_lensing_weights(cl_zlist, z_kernel, kernel)
+            weights = get_lensing_weights(cl_zlist, z_kernel, kernel, as_delta=as_delta)
             collect_regions(nreg, cl_dlist, dlist_tot,  nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, weights=weights)
         if stack_galaxies:
             if mode=="ACTxDES":
