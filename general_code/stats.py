@@ -30,24 +30,25 @@ def chisq(datavec1, datavec2, covmat1, covmat2=None):
         covmat = covmat1 + covmat2 # normally distributed variables
     else:
         covmat = covmat1
-    chisq = np.matmul(np.matmul((datavec1-datavec2).T,np.linalg.inv(covmat)),(datavec1-datavec2))
-    return(chisq)
+    # Check if covmat is positive definite to ensure invertibility
+    if np.all(np.linalg.eigvals(covmat) > 0):
+        chisq = np.matmul(np.matmul((datavec1-datavec2).T,np.linalg.inv(covmat)),(datavec1-datavec2))
+        return(chisq)
+    else:
+        raise ValueError("Covariance matrix is not positive definite.")
 
 def snr_from_pte(data_vector, null_vector, covmat, chisq_data=None, nsamples=10**6):
     exceeds = np.zeros(nsamples)
     if chisq_data is None:
         chisq_data = chisq(data_vector, null_vector, covmat)
     sim = np.random.multivariate_normal(null_vector, covmat, size=nsamples)
-    chi2null_list = []
-    for i in range(nsamples):
-        chisq_null = chisq(sim[i], null_vector, covmat)
-        if chisq_null > chisq_data:
-            exceeds[i] = 1
-        chi2null_list.append(chisq_null)
-    print("Number exceeding: ", len(np.where(exceeds == 1)[0]))
-    pte = len(np.where(exceeds == 1)[0])/(float(nsamples))
-    snr = np.sqrt(2.) * sp.special.erfinv(1.-pte)
-    return(pte,snr, chi2null_list)
+    chi2null_values = np.array([chisq(sim[i], null_vector, covmat) for i in range(nsamples)])
+    exceeds = chi2null_values > chisq_data
+    pte = np.mean(exceeds)
+    print("Number exceeding: ",  np.sum(exceeds))
+    # snr = np.sqrt(2.) * sp.special.erfinv(1.-pte) # for gaussian
+    snr = np.sqrt(stats.chi2.ppf(1 - pte, len(data_vector)))
+    return(pte,snr)
 
 
 def KStest_raderrs(vals,err,mean, twosamp=False):

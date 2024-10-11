@@ -27,15 +27,16 @@ h = (cosmo.H0/100.).value
 # mode is which data set, uncomment one of the following
 # mode  = 'Buzzard'
 # mode  = 'Cardinal'
-mode = 'ACTxDES'
+# mode = 'ACTxDES'
+mode = 'ACTxDESI'
 # mode = 'Websky'
 # mode = 'GRF'
 
-errors = True # if true, split regions to get error estimates
+errors = False # if true, split regions to get error estimates
 nu_e_cuts = True
 # Input here which maps to stack
-stack_y        = False
-stack_galaxies = True
+stack_y        = True
+stack_galaxies = False
 if mode=='ACTxDES':
     stack_kappa = False
 else:
@@ -46,12 +47,12 @@ smth     = 20 #Mpc
 # use overlapping bins that half-offset from each other
 overlap = True
 # split if you want to only use some of the galaxy data to orient and other to stack
-split = True
+split = False
 # Split by redshift bins (True) or by bins of constant comoving distance (False)?
 zsplit = False
 
 xyup = True
-do_hankel = True # usually set to True
+do_hankel = False # usually set to True
 orient = True # usually set to True
 ########################################################
 
@@ -72,8 +73,10 @@ if zsplit:
     zbins = [[0.20, 0.40], [0.4,0.55], [0.55,0.70], [0.70,0.85], [0.85,0.95]] # Maglim bins from DES Y3: highest zbin unnecessary as there are no redmapper clusters there.
 else:
     width    = 200
-    minz     = 0.2 # if you want to only run from the lower d limit of paper 1, input z_at_value(cosmo.comoving_distance, 1032.5*u.Mpc)
-    maxz     = 1.0
+    minz = 0.4
+    maxz = 1.1
+    # minz     = 0.2 # for Maglim. if you want to only run from the lower d limit of paper 1, input z_at_value(cosmo.comoving_distance, 1032.5*u.Mpc)
+    # maxz     = 1.0 # for maglim.
 
 smth_str = ("{:.1f}".format(smth)).replace('.','pt')
 
@@ -102,11 +105,14 @@ if mode=='Websky':
     else:
         cutmaxstr = ''
 else:
-    cut = 'lambda'
+    # cut = 'lambda' # for DES clusters
+    cut = 'nocut'
     # cutmin   = 10 # old way
-    cutmin   = 20 # new way
-    cutminstr = 'gt{:d}'.format(cutmin)
+    # cutmin   = 20 # new way for DES
+    # cutminstr = 'gt{:d}'.format(cutmin) # for DES
+    cutminstr = ''
     cutmaxstr = ''
+    
 cutstr = '{:s}'.format(cut)+cutminstr+cutmaxstr
 
 standard_stk_file = "/home/mlokken/oriented_stacking/general_code/standard_stackfile.ini"
@@ -121,9 +127,9 @@ if mode == 'ACTxDES':
         object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt20vl50_mask_actshr1deg_des_cutpt8.fit"
     else: # use the full catalog
         object_path = "/mnt/raid-cita/mlokken/data/cluster_cats/redmapper2.2.1_lgt5vl50_mask_actshr1deg_des_cutpt8.fit"
-    # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
+    ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
     # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_yy_4096_hpx.fits" # CIB deprojected
-    ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.4_10.7_yy_4096_hpx.fits" # CIB deprojected
+    # ymap          = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.0_10.7_yy_4096_hpx.fits" # CIB deprojected
     # ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_deproj_cib_1.2_24.0_yy_4096_hpx.fits"
     pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/maglim/"
     # pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/200_cmpc_slices/redmagic_updated_nov2021/"
@@ -136,6 +142,18 @@ if mode == 'ACTxDES':
     #outpath     = "/mnt/scratch-lustre/mlokken/stacking/D56_updated_redmasgic_stacks/"
     gmode       = "DES"
     kmode       = os.path.split(kappamap)[1][:-5]
+    
+
+if mode == 'ACTxDESI':
+    object_path = "/mnt/raid-cita/mlokken/data/desi/small_region_LRG_clustering.dat.fits"
+    pkmap_path  = "/mnt/raid-cita/mlokken/data/number_density_maps/desi/"
+    pkmask      = "/mnt/raid-cita/mlokken/data/masks/desi_mask_bright.fits"
+    outpath     = "/mnt/scratch-lustre/mlokken/stacking/ACTxDESI_LRG/"
+    orient_mode = "desi_lrg"
+    ymap        = "/mnt/raid-cita/mlokken/data/act_ymaps/ilc_SZ_yy_4096_hpx.fits" # nothing deprojected
+    ymask       = "/mnt/raid-cita/mlokken/data/masks/wide_mask_GAL070_apod_1.50_deg_wExtended_shrunk_1deg_hpx.fits"
+    
+    
 if mode == 'Buzzard':
     object_path = "/mnt/raid-cita/mlokken/buzzard/catalogs/combined_actdes_mask_pt8_buzzard_1.9.9_3y3a_rsshift_run_redmapper_v0.5.1_lgt05_vl50_catalog.fit"
     # pkmap_path  = "/mnt/raid-cita/mlokken/buzzard/number_density_maps/200_des_reg/" # redmagic
@@ -153,8 +171,8 @@ if mode == 'Cardinal':
     gmask       = "/mnt/raid-cita/mlokken/cardinal/cardinal_maglim_mask.fits"
     pkmap_path  = "/mnt/raid-cita/mlokken/cardinal/number_density_maps/maglim/"
     ymask       = "/mnt/raid-cita/mlokken/buzzard/ymaps/my_buzzardy_mask.fits"
-    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits" # standard
-    # ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_break_bbps_car_1p6arcmin_cutoff4_alphabreak0.972_4096_hpx.fits" # break
+    # ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_standard_bbps_car_1p6arcmin_cutoff4_4096_hpx.fits" # standard
+    ymap        = "/mnt/raid-cita/mlokken/buzzard/ymaps/ymap_buzzard_break_bbps_car_1p6arcmin_cutoff4_alphabreak0.972_4096_hpx.fits" # break
     outpath = "/mnt/scratch-lustre/mlokken/stacking/Cardinal_paper2/"
     orient_mode = "maglim"
     gmode       = "Cardinal"
@@ -169,7 +187,6 @@ if mode == "Websky":
     #outpath     = "/mnt/scratch-lustre/mlokken/stacking/PeakPatch_tSZ/orient_by_1pt5E12_to_1E15_msun_halos"
     outpath     = "/mnt/scratch-lustre/mlokken/pkpatch/number_density_maps/fullsky/galaxies/orient_tests/"
 ymode       = os.path.split(ymap)[1][:-5]
-
 
 if errors:
     if nu_e_cuts:
@@ -222,7 +239,10 @@ for n in range(nruns_local):
     else:
         orientstr="randrot"
     print("NOW PROCESSING REDSHIFT BIN", binstr_orient)
-    inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+    if mode=='ACTxDES':
+        inifile_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
+    elif mode=='ACTxDESI':
+        inifile_root = "lrg_{:s}_{:s}_{:s}{:s}_{:s}".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
     pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), inifile_root+"_pks.fits")
     if errors:
         labels       = np.loadtxt("/home/mlokken/oriented_stacking/general_code/labels_{:d}_regions_{:s}_{:s}.txt".format(nreg,mode,cutstr))
@@ -270,7 +290,7 @@ for n in range(nruns_local):
                         if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>=zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
                             zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
                             zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
-                            map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}_cc.fits".format(zlow_str, zhi_str)
+                            map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}.fits".format(zlow_str, zhi_str)
                             g_inifile_root = "{:s}_maglim_z_{:s}_{:s}_".format(gmode, zlow_str,zhi_str)+inifile_root+"_reg{:d}".format(reg)
                             slice_included = True
                     if slice_included:
@@ -326,7 +346,7 @@ for n in range(nruns_local):
                 if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
                     zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
                     zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
-                    map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}_cc.fits".format(zlow_str, zhi_str)
+                    map_to_stack = pkmap_path+"ndmap_25_z_{:s}_{:s}.fits".format(zlow_str, zhi_str)
                     g_inifile_root = "{:s}_maglim_z_{:s}_{:s}_".format(gmode,zlow_str,zhi_str)+inifile_root
             if not os.path.exists(os.path.join(stkpath, g_inifile_root+"_stk_HankelTransform_m0.txt")):
                 gstk_ini = ef.make_stk_ini_file(pksfile, map_to_stack, standard_stk_file, stkpath, g_inifile_root,[dlow,dhi], stk_mask=gmask, rad_Mpc=40)

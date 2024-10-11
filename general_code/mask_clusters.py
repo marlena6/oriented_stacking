@@ -43,7 +43,6 @@ else:
     
 ra = data[raname]
 dec = data[decname]
-print(ra[0], dec[0])
 
 include_idx = np.arange(len(dec))
 N = len(ra)
@@ -63,8 +62,13 @@ pixel_width = np.deg2rad(coopwidth)//width
 print("Cutting clusters more than %d pixels from map edge"%pixel_width)
 
 good_rows = []
-
+# add a counter
+c = 0
 for i in range(ncl_local+extras):
+    c += 1
+    if c % 10000 == 0:
+        print("Processor %d: %d pct of objects processed\n" %(rank, c/(ncl_local+extras)*100))
+        
     clnum = i + ncl_local * rank
     coords = np.deg2rad(np.array((dec[clnum],ra[clnum])))
     ypix, xpix = enmap.sky2pix(mask.shape, mask.wcs, coords)

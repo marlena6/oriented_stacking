@@ -564,7 +564,12 @@ def integrate(profile, r, upper_bound, errors=None):
     return(reimann_sum*np.pi, np.sqrt(error_sum)*np.pi)
 
 
-def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=75, orient_mode='maglim', xyup=True, binsize=7.5, crop_center=2.5, scale=None, make_delta=False, remove_r30=False, nreg=24):
+def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=75, orient_mode='maglim', xyup=True, binsize=7.5, crop_center=2.5, scale=None, make_delta=False, remove_r30=False, nreg=24, cc=True, fullfile=None):
+    # if cc, use the completeness corrected map results
+    if cc:
+        ccstr = 'cc_'
+    else:
+        ccstr = ''
     if xyup:
         xyupstr = '_orientXYUP'
     else:
@@ -576,8 +581,11 @@ def retrieve_stack_info(path, mapstr, pt_selection_str, cl_dbin, cutmin=20, pct=
     g_dhi    = cl_dhi+50
     zlow   = z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)
     zhi    = z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)
-    
-    file = path + f"{mapstr}_redmapper_lambdagt{cutmin}_combined_{cl_dlow}_{cl_dhi}Mpc_{pt_selection_str}20pt0{xyupstr}_{pct}pct_{orient_mode}_{g_dlow}_{g_dhi}Mpc_{nreg}reg_m0to5_profiles.pkl"
+    if not fullfile:
+        # construct the file name
+        file = path + f"{mapstr}_redmapper_lambdagt{cutmin}_combined_{cl_dlow}_{cl_dhi}Mpc_{pt_selection_str}20pt0{xyupstr}_{pct}pct_{orient_mode}_{g_dlow}_{g_dhi}Mpc_{ccstr}{nreg}reg_m0to5_profiles.pkl"
+    else:
+        file = fullfile
     print(f"retrieving data from {file}")
     stack_info = np.load(file, allow_pickle=True)
     # rearrange shape of profs to be compatible with Stack_object

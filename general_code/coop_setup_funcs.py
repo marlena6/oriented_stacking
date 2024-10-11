@@ -203,6 +203,16 @@ def get_radecz(filepath, min_mass=None, max_mass=None, return_mass=False, return
             ra  = halos[:,4]
             dec = halos[:,5]
             z   = halos[:,6]
+    elif "LRG" in filepath: # DESI LRG file
+        print("DESI LRG catalog entered.")
+        hdu = fits.open(filepath)
+        dat = hdu[1].data
+        hdr = hdu[1].header
+        hdu.close()
+        ra  = dat['RA']
+        dec = dat['DEC']
+        z   = dat['Z']
+        id  = dat['TARGETID']
     else:
         print("unrecognized file format")
     to_return = [ra,dec,z]
@@ -230,6 +240,7 @@ def get_radeczlambda(filepath, min_mass=None, return_mass=False, return_id=False
             id = dat['mem_match_id']
         else:
             id = dat['id']
+            
     elif ".npy" in filepath:
         # takes npy file with format [M,x,y,z,ra,dec,redshift]
         halos = np.load(filepath)

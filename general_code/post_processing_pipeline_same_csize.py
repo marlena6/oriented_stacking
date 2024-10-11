@@ -26,8 +26,8 @@ mmax   = 5 # maximum multipole moment to use in the decomposition
 zsplit = False # Split by redshift bins rather than by bins of constant comoving distance?
 # Input here which maps to stack                                                                                                                                                                         
 stack_y        = False
-stack_galaxies = True
-stack_kappa    = False
+stack_galaxies = False
+stack_kappa    = True
 stack_mask     = False
 nu_e_cuts = True # use threshold of nu>2 and e>0.3
 # split if you want to only use some of the galaxy data to orient and other to stack
@@ -48,6 +48,9 @@ if xyup:
 else:
     style = ""
     
+    
+zbins_ndmaps = [[0.2,0.36],[0.36,0.53],[0.53,0.72],[0.72,0.94]]
+
 def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode, overlap=True, weights=None):
     stack_list    = []
     hankel_arrays = []
@@ -60,11 +63,21 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
     print("You have selected to combine stacks of clusters between {:d} and {:d} Mpc.".format(cl_dlow_abs,cl_dhi_abs))
     c = 0
     
-    for dbin in dlist_tot[nlow:nhi+1]:
+    for d, dbin in enumerate(dlist_tot[nlow:nhi+1]):
         dlow, dhi = dbin[0], dbin[1]
-        bincent  = (dlow+dhi)/2.
-        cl_dlow  = int(bincent-50)
-        cl_dhi   = int(bincent+50)
+        cl_dlow, cl_dhi = cl_dlist[nlow+d][0], cl_dlist[nlow+d][1]
+        mapstr_add = ""
+        if 'maglim' in mapstr:
+            
+            for zbin in zbins_ndmaps:
+                if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
+                    zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
+                    zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
+            mapstr_add = "_z_{:s}_{:s}".format(zlow_str, zhi_str)
+        mapstr_mod = mapstr+mapstr_add
+        # bincent  = (dlow+dhi)/2.
+        # cl_dlow  = int(bincent-50)
+        # cl_dhi   = int(bincent+50)
         binstr_cl   = "{:d}_{:d}Mpc".format(cl_dlow, cl_dhi)
         if zsplit:
             zlow, zhi = zbins[i][0], zbins[i][1]
@@ -80,7 +93,7 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
             orientstr="randrot"
         file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
         pksfile = os.path.join(outpath+"orient_by_{:s}_{:d}/".format(orient_mode, pct), file_root+"_pks.fits")
-        stackfile = os.path.join(stkpath,"{:s}_{:s}_stk.fits".format(mapstr,file_root))
+        stackfile = os.path.join(stkpath,"{:s}_{:s}_stk.fits".format(mapstr_mod,file_root))
         if os.path.exists(stackfile):
             hdr, img, npks = cpp.get_img(stackfile, pksfile)
             npks_list.append(npks)
@@ -88,7 +101,7 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
             if do_hankel:
                 hankel_ms = []
                 for m in range(mmax):
-                    hankelfile = os.path.join(stkpath,"{:s}_{:s}_stk_HankelTransform_m{:d}.txt".format(mapstr, file_root, m))
+                    hankelfile = os.path.join(stkpath,"{:s}_{:s}_stk_HankelTransform_m{:d}.txt".format(mapstr_mod, file_root, m))
                     hankel = np.loadtxt(hankelfile)
                     r, Cr, Sr = hankel[:,0], hankel[:,1], hankel[:,2]
                     hankel_ms.append(Cr)
@@ -125,7 +138,11 @@ def consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr,
         else:
             orientstr_save = "randrot"
         filesave_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
-        savestr = mapstr+"_"+filesave_root
+        if "maglim" in mapstr and nlow==0 and nhi==22:
+            mapstr_fin = mapstr+"_z_0pt20_0pt94"
+        else:
+            mapstr_fin = mapstr
+        savestr = mapstr_fin+"_"+filesave_root
         np.savetxt(os.path.join(outpath,savestr+"_stack.txt"), comb_stack)
         save_file = open(os.path.join(outpath, "{:s}_m0to{:d}_profiles.pkl".format(savestr, mmax)), "wb")
         print(savestr)
@@ -155,7 +172,11 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
     else:
         orientstr_save = "randrot"
     file_root = "redmapper_{:s}_combined_{:d}_{:d}Mpc_{:s}{:s}_{:s}_cc".format(cutstr, cl_dlow_abs, cl_dhi_abs, pt_selection_str, smth_str, orientstr_save)
-    savestr = mapstr+"_"+file_root+"_{:d}reg_{:d}_{:d}".format(nreg, rank*nruns_local, (rank+1)*nruns_local-1)
+    if "maglim" in mapstr and nlow==0 and nhi==22:
+        mapstr_fin = mapstr+"_z_0pt20_0pt94"
+    else:
+        mapstr_fin = mapstr
+    savestr = mapstr_fin+"_"+file_root+"_{:d}reg_{:d}_{:d}".format(nreg, rank*nruns_local, (rank+1)*nruns_local-1)
     
     if not os.path.exists((os.path.join(outpath, "temp_reg", "{:s}_m0to{:d}_profiles.pkl".format(savestr, mmax)))):
         if weights is not None:
@@ -164,10 +185,20 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
         for reg in range(nreg):
             reg_path  = os.path.join(stkpath,str(reg))
             dbin = dlist_tot[nlow]
+            cl_dbin = cl_dlist[nlow]
             dlow, dhi = dbin[0], dbin[1]
-            bincent  = (dlow+dhi)/2.
-            cl_dlow  = int(bincent-50)
-            cl_dhi   = int(bincent+50)
+            cl_dlow, cl_dhi = cl_dbin[0], cl_dbin[1]
+            mapstr_add = ""
+            if 'maglim' in mapstr:  
+                for zbin in zbins_ndmaps:
+                    if (z_at_value(cosmo.comoving_distance, cl_dlow*u.Mpc)>zbin[0]) & (z_at_value(cosmo.comoving_distance, cl_dhi*u.Mpc)<zbin[1]):
+                        zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
+                        zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
+                mapstr_add = "_z_{:s}_{:s}".format(zlow_str, zhi_str)
+            mapstr_mod = mapstr+mapstr_add
+            # bincent  = (dlow+dhi)/2.
+            # cl_dlow  = int(bincent-50)
+            # cl_dhi   = int(bincent+50)
             binstr_cl   = "{:d}_{:d}Mpc".format(cl_dlow, cl_dhi)
             binstr_orient = "{:d}_{:d}Mpc".format(dlow, dhi)
             if orient:
@@ -175,7 +206,7 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
             else:
                 orientstr="randrot"
             file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
-            stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
+            stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr_mod,file_root,reg))
             pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
             
             if os.path.exists(stackfile):
@@ -194,11 +225,20 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
             counter = 0
             npks_reg = 0
             print("Region",reg)
-            for dbin in dlist_tot[nlow:nhi+1]:
+            for d, dbin in enumerate(dlist_tot[nlow:nhi+1]):
                 dlow, dhi = dbin[0], dbin[1]
-                bincent  = (dlow+dhi)/2.
-                cl_dlow  = int(bincent-50)
-                cl_dhi   = int(bincent+50)
+                cl_dlow, cl_dhi = cl_dlist[nlow+d][0], cl_dlist[nlow+d][1]
+                mapstr_add = ""
+                if 'maglim' in mapstr:  
+                    for zbin in zbins_ndmaps:
+                        if (z_at_value(cosmo.comoving_distance, dlow*u.Mpc)>zbin[0]) & (z_at_value(cosmo.comoving_distance, dhi*u.Mpc)<zbin[1]):
+                            zlow_str = ("{:.2f}".format(zbin[0])).replace('.', 'pt')
+                            zhi_str  = ("{:.2f}".format(zbin[1])).replace('.', 'pt')
+                    mapstr_add = "_z_{:s}_{:s}".format(zlow_str, zhi_str)
+                mapstr_mod = mapstr+mapstr_add
+                # bincent  = (dlow+dhi)/2.
+                # cl_dlow  = int(bincent-50)
+                # cl_dhi   = int(bincent+50)
                 binstr_cl   = "{:d}_{:d}Mpc".format(cl_dlow, cl_dhi)
                 if zsplit:
                     zlow, zhi = zbins[i][0], zbins[i][1]
@@ -215,7 +255,7 @@ def collect_regions(nreg, cl_dlist, dlist_tot,nlow, nhi, mapstr, cutstr, pt_sele
                 else:
                     orientstr="randrot"
                 file_root = "redmapper_{:s}_{:s}_{:s}{:s}_{:s}_cc".format(cutstr, binstr_cl, pt_selection_str, smth_str, orientstr)
-                stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr,file_root,reg))
+                stackfile = os.path.join(reg_path,"{:s}_{:s}_reg{:d}_stk.fits".format(mapstr_mod,file_root,reg))
                 pkfile    = os.path.join(reg_path,"{:s}_reg{:d}_pks.fits".format(file_root, reg))
                 if os.path.exists(stackfile):
                     hdr, img, npks = cpp.get_img(stackfile, pkfile)
@@ -291,7 +331,10 @@ def get_lensing_weights(cl_zlist, z_kernel, kernel, as_delta=False):
     weights = u.Quantity(np.asarray(weights))
     a_cl = [1/(1+np.mean(zbin)) for zbin in cl_zlist]
     chi_cl = [cosmo.comoving_distance(np.mean(zbin)).value for zbin in cl_zlist]
-    weights *= (1/np.asarray(a_cl)  * 1/(np.asarray(chi_cl)*u.Mpc) * 2*const.c**2/(8*np.pi *const.G))# units of surface mass densit
+    ell_cl = np.asarray([cosmo.angular_diameter_distance(np.mean(zbin)).value for zbin in cl_zlist])*u.Mpc
+    print(ell_cl.unit, "angular diameter distance unit")
+    # weights *= (1/np.asarray(a_cl)  * 1/(np.asarray(chi_cl)*u.Mpc) * 2*const.c**2/(8*np.pi *const.G))# units of surface mass densit
+    weights *= const.c**2/(4*np.pi*const.G)*(1/ell_cl)
     if as_delta:
         weights /= rho_avgs
     print(weights.unit, "lensing weight unit")
@@ -416,8 +459,8 @@ if errors:
     # [2093, 2193], [2193, 2293], [2293, 2393], [2393, 2493],
     # [2493, 2593], [2593, 2693], [2693, 2793], [2793, 2893],
     # [2893, 2993], [2993, 3093], [3093, 3193], [3193, 3293]]
-    nlow_hi_bins = [[0,4], [6,10], [12,16], [18,22]]
-    # nlow_hi_bins = [[0,22]]
+    # nlow_hi_bins = [[0,4], [6,10], [12,16], [18,22]]
+    nlow_hi_bins = [[0,22]]
     # corresponds to [[893, 1393], [1493, 1993], [2093, 2593], [2693, 3193]]
 
 else:
@@ -457,15 +500,7 @@ if not errors:
                 gmode = "Buzzard"
             elif mode=="Cardinal":
                 gmode = "Cardinal"
-            if (nlow==0) & (nhi==4):
-                mapstr = "{:s}_maglim_z_0pt20_0pt36".format(gmode)
-            elif (nlow==6) & (nhi==10):
-                mapstr = "{:s}_maglim_z_0pt36_0pt53".format(gmode)
-            elif (nlow==12) & (nhi==16):
-                mapstr = "{:s}_maglim_z_0pt53_0pt72".format(gmode)
-            elif (nlow==18) & (nhi==22):
-                mapstr = "{:s}_maglim_z_0pt72_0pt94".format(gmode)
-        
+            mapstr = "{:s}_maglim".format(gmode)
             consolidate_data_interactive(cl_dlist, dlist_tot, nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
             
 
@@ -491,14 +526,15 @@ elif errors:
                 gmode = "Buzzard"
             elif mode=="Cardinal":
                 gmode = "Cardinal"
-            if (nlow==0) & (nhi==4):
-                mapstr = "{:s}_maglim_z_0pt20_0pt36".format(gmode)
-            elif (nlow==6) & (nhi==10):
-                mapstr = "{:s}_maglim_z_0pt36_0pt53".format(gmode)
-            elif (nlow==12) & (nhi==16):
-                mapstr = "{:s}_maglim_z_0pt53_0pt72".format(gmode)
-            elif (nlow==18) & (nhi==22):
-                mapstr = "{:s}_maglim_z_0pt72_0pt94".format(gmode)
+            mapstr = "{:s}_maglim".format(gmode)
+            # if (nlow==0) & (nhi==4):
+            #     mapstr = "{:s}_maglim_z_0pt20_0pt36".format(gmode)
+            # elif (nlow==6) & (nhi==10):
+            #     mapstr = "{:s}_maglim_z_0pt36_0pt53".format(gmode)
+            # elif (nlow==12) & (nhi==16):
+            #     mapstr = "{:s}_maglim_z_0pt53_0pt72".format(gmode)
+            # elif (nlow==18) & (nhi==22):
+            #     mapstr = "{:s}_maglim_z_0pt72_0pt94".format(gmode)
             collect_regions(nreg, cl_dlist, dlist_tot,  nlow, nhi, mapstr, cutstr, pt_selection_str, smth_str, pct, orient_mode)
         if stack_mask:
             mapstr = "DES_mask"

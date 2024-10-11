@@ -140,7 +140,7 @@ for nbin in nlow_hi_bins:
     dhi_abs     = dlist_tot[nhi][1]
     for file in os.listdir(path):
         # check if it's a kappa stack
-        if (f"{cl_dlow_abs}_{cl_dhi_abs}") in file and (("kappa_bin4_asdelta" in file)):
+        if (f"{cl_dlow_abs}_{cl_dhi_abs}") in file and (("kappa_bin4" in file)):
             combining = True
             f = np.load(os.path.join(path,file), allow_pickle=True)
             for key in f.keys():

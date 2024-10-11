@@ -18,11 +18,12 @@ import h5py
 # mode   = "peakpatch"
 # mode = "redmagic"
 # mode = "maglim"
-#mode = "redmagic_buzz"
+mode = "desi_lrg"
+# mode = "redmagic_buzz"
 # mode = "maglim_buzz"
-mode = "maglim_cardinal"
+# mode = "maglim_cardinal"
 
-split = True
+split = False
 masswgt_odmap = False
 smth_scale    = 0 * u.Mpc
 #45 * u.Mpc
@@ -68,6 +69,16 @@ elif mode == "maglim":
     with fits.open(catfile) as cat:
         catlen = len(cat[1].data)
         ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z_mean'], cat[1].data['weight']
+elif mode == "desi_lrg":
+    mask_path = "/mnt/raid-cita/mlokken/data/masks/combined_desibright_act070shr1_hpx.fits"
+    fracmask_path = None
+    catfile   = "/mnt/raid-cita/mlokken/data/desi/LRG_clustering.dat.fits"
+    outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/desi/"
+    mass_str  = ''
+    with fits.open(catfile) as cat:
+        catlen = len(cat[1].data)
+        ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z'], cat[1].data['weight']
+
 elif mode == "redmagic":
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
     catfile   = "/mnt/raid-cita/mlokken/data/redmagic/redmagic_broad_chi2_isdw_subsamp_chi2_8.fits"
@@ -124,7 +135,15 @@ elif mode == "redmagic_buzz":
         ra, dec, z = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['zredmagic']
     w   = 1
 
-
+elif mode == "desi_lrg":
+    print("DESI LRGs.")
+    catfile = "/mnt/raid-cita/mlokken/data/desi/LRG_clustering.dat.fits"
+    outpath = "/mnt/raid-cita/mlokken/data/number_density_maps/desi/"
+    mass_str = ''
+    with fits.open(catfile) as cat:
+        ra, dec, z, w = cat[1].data['RA'], cat[1].data['DEC'], cat[1].data['Z'], cat[1].data['WEIGHT']
+        catlen = len(ra)
+    cat.close()
 comm = MPI.COMM_WORLD
 rank = comm.Get_rank()
 size = comm.Get_size()
@@ -137,10 +156,10 @@ if zsplit:
     #zbins = [[0.55,0.70]]
 # no-lambda test run only goes out to ~.2
 else:
-    # minz  = 0.4
-    # maxz  = 0.47
-    minz  = 0.2
-    maxz  = 1.05 
+    minz  = 0.4
+    maxz  = 1.1
+    # minz  = 0.2 # for DES Maglim
+    # maxz  = 1.05 # for DES Maglim
 nside = 4096
 
 if split:
@@ -153,9 +172,9 @@ if mask_path is not None:
     mask = hp.read_map(mask_path)
 else:
     mask = None
+fra = None
 if fracmask_path is not None:
     fra = hp.read_map(fracmask_path)
-
 
 if split:
     from numpy.random import Generator, PCG64
