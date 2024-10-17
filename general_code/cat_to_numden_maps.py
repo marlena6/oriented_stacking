@@ -69,15 +69,6 @@ elif mode == "maglim":
     with fits.open(catfile) as cat:
         catlen = len(cat[1].data)
         ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z_mean'], cat[1].data['weight']
-elif mode == "desi_lrg":
-    mask_path = "/mnt/raid-cita/mlokken/data/masks/combined_desibright_act070shr1_hpx.fits"
-    fracmask_path = None
-    catfile   = "/mnt/raid-cita/mlokken/data/desi/LRG_clustering.dat.fits"
-    outpath   = "/mnt/raid-cita/mlokken/data/number_density_maps/desi/"
-    mass_str  = ''
-    with fits.open(catfile) as cat:
-        catlen = len(cat[1].data)
-        ra, dec, z, w = cat[1].data['ra'], cat[1].data['dec'], cat[1].data['z'], cat[1].data['weight']
 
 elif mode == "redmagic":
     mask_path = "/mnt/raid-cita/mlokken/data/masks/y3_gold_2.2.1_RING_joint_redmagic_v0.5.1_wide_maglim_v2.2_mask_hpx_4096.fits"
@@ -137,6 +128,8 @@ elif mode == "redmagic_buzz":
 
 elif mode == "desi_lrg":
     print("DESI LRGs.")
+    mask_path = "/mnt/raid-cita/mlokken/data/masks/combined_desibright_act070shr1_hpx.fits"
+    fracmask_path = None
     catfile = "/mnt/raid-cita/mlokken/data/desi/LRG_clustering.dat.fits"
     outpath = "/mnt/raid-cita/mlokken/data/number_density_maps/desi/"
     mass_str = ''
