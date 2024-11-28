@@ -2,12 +2,7 @@ import numpy as np
 import healpy as hp
 from pixell import curvedsky, enmap
 import sys
-
-def ThetaPhitoDeclRa(theta,phi):
-    dec = -1*np.degrees(theta)+90
-    ra  = np.degrees(phi)
-    ra[ra>180] = -360 + ra[ra>180]
-    return dec,ra
+import coop_setup_funcs as csf
 
 def make_regions(ra, dec, nreg, plot=False, plotroot = None, thetaphi=False, mode='ACTxDES'):
     """
@@ -21,7 +16,7 @@ def make_regions(ra, dec, nreg, plot=False, plotroot = None, thetaphi=False, mod
     import astropy.coordinates as coord
 
     if thetaphi:
-        dec,ra = ThetaPhitoDeclRa(ra, dec)
+        dec,ra = csf.ThetaPhitoRaDec(ra, dec)
 
     km = kmeans_sample(np.vstack((ra,dec)).T, nreg, maxiter=100, tol=1.0e-5)
     

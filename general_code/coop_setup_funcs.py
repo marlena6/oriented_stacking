@@ -1,16 +1,20 @@
 import numpy as np
 from astropy.io import fits
-from astropy.cosmology import Planck18 as cosmo
-from astropy.cosmology import z_at_value
+from astropy.cosmology import Planck18 as cosmo, z_at_value
 import astropy.units as u
-import os
 import sys
 
-def DeclRatoThetaPhi(decl,RA):
-    return np.radians(-decl+90.),np.radians(RA)
+def DecRatoThetaPhi(dec,ra):
+    theta = np.deg2rad(-dec+90.)
+    phi = np.deg2rad(ra)
+    return theta,phi
 
-def ThetaPhitoRaDec(theta,phi):
-    return np.rad2deg(phi), -1*(np.rad2deg(theta)-90.)
+def ThetaPhitoRaDec(theta,phi,negative_ras=False):
+    ra = np.rad2deg(phi)
+    if negative_ras:
+        ra[ra>180] = -360 + ra[ra>180] # convert RAs greater than 180 to negative values
+    dec = -1*(np.rad2deg(theta)-90.)
+    return ra,dec
 
 # def get_od_map(nside, theta, phi, mask=None, smth=0, wgt=1, beam='gaussian'): # smoothing scale in arcsec
 #     import healpy as hp
@@ -332,15 +336,17 @@ def richness_to_mass(richness, z):
     mass = M_0*(richness/lambda_0)**F_lambda*((1+z)/(1+z_0))**G_z    
     return(mass)
 
-def dlist(minz=None, maxz=None, slice_width=None, offset=0, zbins=None):
+def dlist(minz=None, maxz=None, slice_width=None, offset=0, zlist=None, dlist=None):
     dlist = []
-    if zbins is None and minz is None:
+    if zlist is None and minz is None:
         sys.exit("Need to input one of either zbins, minz.")
-    if zbins is not None:
-        for z in zbins:
+    if zlist is not None:
+        for z in zlist:
             # limit my sample to objects which exist in this redshift bin
             dist_slice_min, dist_slice_max = cosmo.comoving_distance(z[0]),cosmo.comoving_distance(z[1])
-            dlist.append([int(dist_slice_min.value), int(dist_slice_max.value)])    
+            dlist.append([int(dist_slice_min.value), int(dist_slice_max.value)])
+    elif dlist is not None:
+        zlist = z_at_value(cosmo.comoving_distance, [d[0]*u.Mpc for d in dlist]).value
     else:
         nbins = int((cosmo.comoving_distance(maxz).value - cosmo.comoving_distance(minz).value) // slice_width)
         print("Number of distance bins: %d" %nbins)
@@ -348,7 +354,9 @@ def dlist(minz=None, maxz=None, slice_width=None, offset=0, zbins=None):
             dist_slice_min = cosmo.comoving_distance(minz)+float(offset)*u.Mpc + slice_width*u.megaparsec*i
             dist_slice_max = dist_slice_min + slice_width*u.megaparsec
             dlist.append([int(dist_slice_min.value), int(dist_slice_max.value)])
-    return dlist
+        zlist = z_at_value(cosmo.comoving_distance, [d[0]*u.Mpc for d in dlist]).value
+    return dlist, zlist
+
 
 def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=None, min_lambda=None, max_lambda=None, richness=None, tag=None, offset=None, zbins=None):
 
@@ -379,7 +387,7 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
             idx_list.append(in_bin)
             print("Found %d objects in the distance slice between %.2f and %.2f.\n" %(len(ra_in), z_slice_min, z_slice_max))
             thetaphi = np.zeros((len(ra_in),2))
-            theta,phi = DeclRatoThetaPhi(dec_in, ra_in)
+            theta,phi = DecRatoThetaPhi(dec_in, ra_in)
             thetaphi[:,0]=theta
             thetaphi[:,1]=phi
             thetaphi_list.append(thetaphi)
@@ -401,7 +409,7 @@ def radec_to_thetaphi_sliced(ra, dec, z_arr, minz=None, maxz=None, slice_width=N
             z_in     = z_arr[in_bin]
             print("Found %d objects in the distance slice between %d and %d Mpc.\n" %(len(ra_in), int(dist_slice_min.value), int(dist_slice_max.value)))
             thetaphi = np.zeros((len(ra_in),2))
-            theta,phi = DeclRatoThetaPhi(dec_in, ra_in)
+            theta,phi = DecRatoThetaPhi(dec_in, ra_in)
             thetaphi[:,0]=theta
             thetaphi[:,1]=phi
             thetaphi_list.append(thetaphi)

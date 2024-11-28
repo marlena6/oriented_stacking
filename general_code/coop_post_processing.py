@@ -38,6 +38,17 @@ def bin_profile(r, Cr_m, rad_in_mpc, binsize): # binsize in Mpc
     #step_in_mpc = rad_in_mpc/len(r)
     return binned_prof, binned_r
 
+def calc_offsets(rot_angle_pct, rot_angle_all):
+    diffs = []
+    for i in range(len(rot_angle_pct)):
+        a = rot_angle_pct[i] - rot_angle_all[i]
+        a = (a + np.pi) % (2*np.pi) - np.pi
+        diffs.append(abs(a))
+    diffs = np.asarray(diffs)
+    diffs[diffs>(np.pi/2.)]-=np.pi
+    diffs = (np.abs(diffs)*u.rad).to(u.deg)
+    return diffs
+
 def cormat(covmat):
     cormat = np.zeros(covmat.shape)
     for i in range(covmat.shape[0]):
@@ -71,13 +82,15 @@ def get_peakinfo(filename):
     theta,phi = peakinfo[:,1], peakinfo[:,2]
     parityx   = peakinfo[:,4]
     parityy   = peakinfo[:,5]
-    dec, ra = ef.ThetaPhitoDeclRa(theta,phi)
+    ra, dec = csf.ThetaPhitoRaDec(theta,phi, negative_ras=True)
     # ra = np.asarray(ra)
     # dec = np.asarray(dec)
     peakfile.close()
     return (rot_angle,ra,dec, parityx, parityy, peakid)
     
 def get_vector_components(rot_angle):
+    # make it work for a single angle or an array of angles
+    rot_angle = np.atleast_1d(rot_angle)
     U_arr = np.zeros(len(rot_angle))
     V_arr = np.zeros(len(rot_angle))
     m = 0
@@ -203,8 +216,9 @@ def peakinfo_radec(filename):
     dec = []
     ra  = []
     for i in range(len(theta)):
-        dec.append(csf.ThetaPhitoRaDec(theta[i],phi[i])[1])
-        ra.append(csf.ThetaPhitoRaDec(theta[i],phi[i])[0])
+        ra_i,dec_i = csf.ThetaPhitoRaDec(theta[i],phi[i], negative_ras=True)
+        dec.append(dec_i)
+        ra.append(ra_i)
     ra = np.asarray(ra)
     dec = np.asarray(dec)
     return (rot_angle,ra,dec)
